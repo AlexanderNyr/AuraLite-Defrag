@@ -1,0 +1,35 @@
+{
+  "id": "SC-02",
+  "seed": 1002,
+  "description": "REQUIRED: Volume ~94.5% full (5-15% Quick/Free-space tier)",
+  "generator": "G-2",
+  "volume": {
+    "clusters": 8192,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 5.8,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 10.0,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 2048,
+    "inUseRecords": 800
+  },
+  "files": {
+    "count": 260,
+    "extentsPerFile": 3,
+    "sizeMinClusters": 18,
+    "sizeMaxClusters": 36
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationBeforeMin": 10.0,
+    "fragmentationAfterMax": 100.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

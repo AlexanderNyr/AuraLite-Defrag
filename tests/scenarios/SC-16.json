@@ -1,0 +1,36 @@
+{
+  "id": "SC-16",
+  "seed": 1016,
+  "description": "BitLocker-locked volume",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 4096,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning",
+    "bitLockerLocked": true
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 200
+  },
+  "files": {
+    "count": 20,
+    "extentsPerFile": 2,
+    "sizeMinClusters": 4,
+    "sizeMaxClusters": 10
+  },
+  "faults": [],
+  "expected": {
+    "expectPreflightFail": true,
+    "expectZeroMoves": true
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

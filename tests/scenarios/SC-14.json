@@ -1,0 +1,35 @@
+{
+  "id": "SC-14",
+  "seed": 1014,
+  "description": "SSD detected (analysis-only across all entry points)",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 4096,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "SolidState"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 200
+  },
+  "files": {
+    "count": 40,
+    "extentsPerFile": 4,
+    "sizeMinClusters": 8,
+    "sizeMaxClusters": 16
+  },
+  "faults": [],
+  "expected": {
+    "expectPreflightFail": true,
+    "expectZeroMoves": true
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

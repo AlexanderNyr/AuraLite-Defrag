@@ -1,0 +1,34 @@
+{
+  "id": "SC-06",
+  "seed": 1006,
+  "description": "REQUIRED: Huge files (large-files-to-end)",
+  "generator": "G-5",
+  "volume": {
+    "clusters": 65536,
+    "bytesPerCluster": 65536,
+    "freeTargetPct": 70.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 10.0,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 100
+  },
+  "files": {
+    "count": 3,
+    "extentsPerFile": 4,
+    "sizeMinClusters": 1600,
+    "sizeMaxClusters": 1750
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationAfterMax": 5.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

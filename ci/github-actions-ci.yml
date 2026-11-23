@@ -1,0 +1,45 @@
+name: AuraLite-Defrag CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  linux-sanitizers-and-audits:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Python architectural, string, and licence audits
+        run: |
+          python3 tools/check_layers.py
+          python3 tools/check_strings.py
+          python3 tools/check_licences.py
+      - name: Build CLI and run ASan+UBSan unit, property, 200-trial crash, and 20-scenario suite
+        run: |
+          make cli
+          make test
+      - name: CLI smoke checks (SC-01 & SC-14 SSD refusal)
+        run: |
+          ./build_linux/auralite-cli analyze --sim tests/scenarios/SC-01.json
+          ./build_linux/auralite-cli defrag --sim tests/scenarios/SC-01.json --dry-run --format json
+          set +e
+          ./build_linux/auralite-cli defrag --sim tests/scenarios/SC-14.json
+          rc=$?
+          set -e
+          test "$rc" -eq 12
+
+  windows-msvc-build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure CMake (MSVC x64)
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build Release
+        run: cmake --build build --config Release
+      - name: Run CTest
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Generate SHA-256 checksums
+        run: |
+          Get-FileHash build\Release\AuraLiteDefrag.exe, build\Release\auralite-cli.exe -Algorithm SHA256 | Format-Table -AutoSize

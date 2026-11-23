@@ -1,0 +1,34 @@
+{
+  "id": "SC-18",
+  "seed": 1018,
+  "description": "Large cluster-count volume aggregation benchmark",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 262144,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 16384,
+    "inUseRecords": 4096
+  },
+  "files": {
+    "count": 400,
+    "extentsPerFile": 4,
+    "sizeMinClusters": 16,
+    "sizeMaxClusters": 64
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationAfterMax": 10.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

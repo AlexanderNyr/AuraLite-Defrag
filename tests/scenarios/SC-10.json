@@ -1,0 +1,36 @@
+{
+  "id": "SC-10",
+  "seed": 1010,
+  "description": "REQUIRED: Locked and unmovable system/metadata files",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 8192,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 400
+  },
+  "files": {
+    "count": 60,
+    "extentsPerFile": 4,
+    "sizeMinClusters": 8,
+    "sizeMaxClusters": 20,
+    "lockedCount": 15,
+    "includeSystemFiles": true
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationAfterMax": 50.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

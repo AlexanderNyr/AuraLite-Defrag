@@ -1,0 +1,35 @@
+{
+  "id": "SC-01",
+  "seed": 1001,
+  "description": "REQUIRED: Heavily fragmented disk",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 16384,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 45.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 4096,
+    "inUseRecords": 1024
+  },
+  "files": {
+    "count": 160,
+    "extentsPerFile": 6,
+    "sizeMinClusters": 12,
+    "sizeMaxClusters": 36
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationBeforeMin": 50.0,
+    "fragmentationAfterMax": 10.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

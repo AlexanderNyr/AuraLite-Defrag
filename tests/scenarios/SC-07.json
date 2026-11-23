@@ -1,0 +1,45 @@
+{
+  "id": "SC-07",
+  "seed": 1007,
+  "description": "REQUIRED: I/O errors during moves",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 8192,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 300
+  },
+  "files": {
+    "count": 60,
+    "extentsPerFile": 4,
+    "sizeMinClusters": 8,
+    "sizeMaxClusters": 24
+  },
+  "faults": [
+    {
+      "type": "IoError",
+      "atOperation": 2,
+      "errorCode": 1117
+    },
+    {
+      "type": "IoError",
+      "atOperation": 10,
+      "errorCode": 1117
+    }
+  ],
+  "expected": {
+    "fragmentationAfterMax": 40.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

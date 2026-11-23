@@ -1,0 +1,45 @@
+{
+  "id": "SC-20",
+  "seed": 1020,
+  "description": "File vanished mid-operation + partial failure",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 8192,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 200
+  },
+  "files": {
+    "count": 50,
+    "extentsPerFile": 4,
+    "sizeMinClusters": 8,
+    "sizeMaxClusters": 20
+  },
+  "faults": [
+    {
+      "type": "FileVanished",
+      "atOperation": 1,
+      "errorCode": 2
+    },
+    {
+      "type": "PartialFailure",
+      "atOperation": 4,
+      "errorCode": 1117
+    }
+  ],
+  "expected": {
+    "fragmentationAfterMax": 20.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "file": "res/assets/auralite_logo.svg",
+      "author": "AuraLite-Defrag Project (Clean-Room Original)",
+      "source": "in-house-generated",
+      "license": "Apache-2.0",
+      "sha256": "babbe6ddafec1624ed8ee1c9c835792895cead27f778bffca8088d5a26c7cb1a"
+    },
+    {
+      "file": "res/assets/auralite_32.png",
+      "author": "AuraLite-Defrag Project (Clean-Room Original)",
+      "source": "in-house-generated",
+      "license": "Apache-2.0",
+      "sha256": "bf7bb9c3118868c60a1c465c12e586074872f508f2c33a55311cc861b81e0a97"
+    },
+    {
+      "file": "res/assets/auralite.ico",
+      "author": "AuraLite-Defrag Project (Clean-Room Original)",
+      "source": "in-house-generated",
+      "license": "Apache-2.0",
+      "sha256": "4f6c7ef631a8e70b87a7f4ad238fb5253c6b8e2285e883f3858e48e173dfdd7d"
+    }
+  ]
+}

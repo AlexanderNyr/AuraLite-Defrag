@@ -1,0 +1,35 @@
+{
+  "id": "SC-03",
+  "seed": 1003,
+  "description": "REQUIRED: Fragmented $MFT",
+  "generator": "G-6",
+  "volume": {
+    "clusters": 8192,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 40.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning",
+    "supportsDirectMftMove": false
+  },
+  "mft": {
+    "fragments": 6,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 10.0,
+    "recordCount": 4096,
+    "inUseRecords": 3000
+  },
+  "files": {
+    "count": 80,
+    "extentsPerFile": 3,
+    "sizeMinClusters": 8,
+    "sizeMaxClusters": 24
+  },
+  "faults": [],
+  "expected": {
+    "mftTier": 3
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

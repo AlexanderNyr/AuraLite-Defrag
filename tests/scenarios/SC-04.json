@@ -1,0 +1,35 @@
+{
+  "id": "SC-04",
+  "seed": 1004,
+  "description": "REQUIRED: MFT Zone occupied by user files",
+  "generator": "G-3",
+  "volume": {
+    "clusters": 8192,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 45.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 15.0,
+    "occupiedByUserFilesPct": 65.0,
+    "recordCount": 2048,
+    "inUseRecords": 900
+  },
+  "files": {
+    "count": 60,
+    "extentsPerFile": 2,
+    "sizeMinClusters": 6,
+    "sizeMaxClusters": 16,
+    "includeSystemFiles": true
+  },
+  "faults": [],
+  "expected": {
+    "mftTier": 2
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

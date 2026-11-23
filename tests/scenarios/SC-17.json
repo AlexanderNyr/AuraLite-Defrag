@@ -1,0 +1,36 @@
+{
+  "id": "SC-17",
+  "seed": 1017,
+  "description": "Long paths and Unicode/non-BMP names",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 8192,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 200
+  },
+  "files": {
+    "count": 40,
+    "extentsPerFile": 3,
+    "sizeMinClusters": 6,
+    "sizeMaxClusters": 18,
+    "longPaths": true,
+    "unicodeNames": true
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationAfterMax": 5.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

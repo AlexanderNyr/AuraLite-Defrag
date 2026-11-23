@@ -1,0 +1,35 @@
+{
+  "id": "SC-09",
+  "seed": 1009,
+  "description": "REQUIRED: Low free space (<5% free, analysis-only)",
+  "generator": "G-2",
+  "volume": {
+    "clusters": 4096,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 2.5,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 10.0,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 400
+  },
+  "files": {
+    "count": 180,
+    "extentsPerFile": 2,
+    "sizeMinClusters": 16,
+    "sizeMaxClusters": 32
+  },
+  "faults": [],
+  "expected": {
+    "expectPreflightFail": true,
+    "expectZeroMoves": true
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

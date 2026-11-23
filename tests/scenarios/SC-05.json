@@ -1,0 +1,35 @@
+{
+  "id": "SC-05",
+  "seed": 1005,
+  "description": "REQUIRED: Many small resident and tiny files",
+  "generator": "G-4",
+  "volume": {
+    "clusters": 16384,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 8192,
+    "inUseRecords": 3000
+  },
+  "files": {
+    "count": 2500,
+    "extentsPerFile": 2,
+    "sizeMinClusters": 2,
+    "sizeMaxClusters": 4,
+    "residentPct": 80.0
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationAfterMax": 10.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

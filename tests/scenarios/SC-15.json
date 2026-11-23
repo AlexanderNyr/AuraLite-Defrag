@@ -1,0 +1,36 @@
+{
+  "id": "SC-15",
+  "seed": 1015,
+  "description": "Clean unfragmented volume",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 4096,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 60.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 200
+  },
+  "files": {
+    "count": 40,
+    "extentsPerFile": 1,
+    "sizeMinClusters": 4,
+    "sizeMaxClusters": 16
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationBeforeMin": 0.0,
+    "fragmentationAfterMax": 0.0,
+    "expectZeroMoves": true
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

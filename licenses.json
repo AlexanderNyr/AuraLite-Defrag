@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "projectLicense": "Apache-2.0",
+  "forbiddenLicenses": ["GPL-2.0", "GPL-3.0", "LGPL-2.1", "LGPL-3.0", "AGPL-3.0"],
+  "entries": [
+    {
+      "name": "AuraLite-Defrag",
+      "scope": "runtime",
+      "license": "Apache-2.0",
+      "source": "internal",
+      "redistributed": true,
+      "adr": "ADR-009"
+    },
+    {
+      "name": "Windows SDK (Win32, D2D1, DWrite, WIC, TaskSchd)",
+      "scope": "platform-sdk",
+      "license": "OS-Component",
+      "source": "https://learn.microsoft.com/en-us/windows/win32/",
+      "redistributed": false,
+      "adr": "ADR-002"
+    },
+    {
+      "name": "CMake",
+      "scope": "build",
+      "license": "BSD-3-Clause",
+      "source": "https://gitlab.kitware.com/cmake/cmake/-/raw/master/LICENSE.rst",
+      "redistributed": false,
+      "adr": "ADR-009"
+    },
+    {
+      "name": "LLVM clang-tidy / clang-format",
+      "scope": "build-qa",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "source": "https://llvm.org/LICENSE.txt",
+      "redistributed": false,
+      "adr": "ADR-009"
+    },
+    {
+      "name": "Inno Setup",
+      "scope": "packaging",
+      "license": "Inno-Setup-License",
+      "justification": "Custom permissive build-time installer tool; not linked into or shipped with AuraLite-Defrag binaries.",
+      "source": "https://jrsoftware.org/files/is/license.txt",
+      "redistributed": false,
+      "adr": "ADR-009"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+#include <windows.h>
+#include "../../res/strings/ids.h"
+#include "../../res/strings/en-US.rc"
+
+1 RT_MANIFEST "app.manifest"

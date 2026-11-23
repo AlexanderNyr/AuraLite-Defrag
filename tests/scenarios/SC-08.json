@@ -1,0 +1,40 @@
+{
+  "id": "SC-08",
+  "seed": 1008,
+  "description": "REQUIRED: Interruption mid-move",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 8192,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 1024,
+    "inUseRecords": 200
+  },
+  "files": {
+    "count": 40,
+    "extentsPerFile": 4,
+    "sizeMinClusters": 8,
+    "sizeMaxClusters": 24
+  },
+  "faults": [
+    {
+      "type": "InterruptionMidMove",
+      "atOperation": 3,
+      "errorCode": 995
+    }
+  ],
+  "expected": {
+    "fragmentationAfterMax": 100.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}

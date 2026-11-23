@@ -1,0 +1,39 @@
+{
+  "id": "SC-11",
+  "seed": 1011,
+  "description": "REQUIRED: Compressed, sparse, EFS, reparse-point, ADS files",
+  "generator": "G-1",
+  "volume": {
+    "clusters": 16384,
+    "bytesPerCluster": 4096,
+    "freeTargetPct": 50.0,
+    "fs": "NTFS",
+    "mediaClass": "Spinning"
+  },
+  "mft": {
+    "fragments": 1,
+    "zonePct": 12.5,
+    "occupiedByUserFilesPct": 0.0,
+    "recordCount": 2048,
+    "inUseRecords": 500
+  },
+  "files": {
+    "count": 60,
+    "extentsPerFile": 2,
+    "sizeMinClusters": 16,
+    "sizeMaxClusters": 32,
+    "compressedCount": 10,
+    "sparseCount": 10,
+    "encryptedCount": 5,
+    "reparseCount": 5,
+    "adsCount": 5
+  },
+  "faults": [],
+  "expected": {
+    "fragmentationAfterMax": 40.0
+  },
+  "schemaVersion": 1,
+  "tolerances": {
+    "agreementMinPct": 98.0
+  }
+}
