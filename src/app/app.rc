@@ -1,5 +1,14 @@
-#include <windows.h>
-#include "../../res/strings/ids.h"
-#include "../../res/strings/en-US.rc"
+// rc.exe resolves include paths against its own include list, not against the
+// directory this file lives in, so these are written from the repository root
+// and CMake puts the root on the RC include path.
+#include "res/strings/ids.h"
+#include "res/strings/en-US.rc"
 
+// The manifest must be the process default manifest (CREATEPROCESS_MANIFEST_
+// RESOURCE_ID). Requiring elevation, PerMonitorV2 DPI and Windows 10/11
+// compatibility all live in that file; without it the app silently starts
+// unelevated and cannot open a volume.
 1 RT_MANIFEST "app.manifest"
+
+// Application icon: shows in Explorer and on the taskbar.
+IDI_AURALITE_APP ICON "res/assets/auralite.ico"

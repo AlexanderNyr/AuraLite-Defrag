@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.25)
 project(AuraLiteDefrag VERSION 1.0.0 LANGUAGES CXX)
 
+# The resource script is a separate "language". Without RC enabled, CMake treats
+# src/app/app.rc as an unknown source and never invokes rc.exe: the GUI would
+# link without its manifest (no requireAdministrator, no PerMonitorV2 DPI) and
+# without any string table. Enabled only on Windows because no other generator
+# has an RC rule.
+if(WIN32)
+    enable_language(RC)
+endif()
+
 include(cmake/CompilerOptions.cmake)
 
 add_library(auralite_core STATIC
@@ -64,12 +73,19 @@ if(WIN32)
     target_include_directories(AuraLiteDefrag PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/res/strings
+        ${CMAKE_CURRENT_SOURCE_DIR}   # app.rc includes res/strings/* from the root
     )
     target_link_libraries(AuraLiteDefrag PRIVATE
         auralite_core
         auralite_win32_platform
         d2d1 dwrite windowscodecs comctl32 uiautomationcore shlwapi
     )
+    # The target is added with the WIN32 keyword, which selects /SUBSYSTEM:WINDOWS.
+    # In a Unicode build the linker otherwise looks for WinMain() and fails with
+    # LNK2019 unresolved external symbol WinMain, because only wWinMain exists.
+    if(MSVC)
+        target_link_options(AuraLiteDefrag PRIVATE /ENTRY:wWinMainCRTStartup)
+    endif()
     auralite_apply_compiler_options(AuraLiteDefrag)
 endif()
 

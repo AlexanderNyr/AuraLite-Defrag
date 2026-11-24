@@ -51,11 +51,22 @@ The patch touches 106 files, adds ~90k lines and contains **no binary hunks**, s
 
 ---
 
-## 2. Configure
+## 2. Configure and build
 
 ```powershell
-cmake -G "Visual Studio 17 2022" -A x64 -B build -DCMAKE_BUILD_TYPE=Release
+cmake -G "Visual Studio 17 2022" -A x64 -B build
+cmake --build build --config Release --parallel
 ```
+
+**Do not pass `-DCMAKE_BUILD_TYPE`.** A Visual Studio generator is multi-config:
+CMake ignores the variable and warns "Manually-specified variables were not used
+by the project". This is harmless, but it is not selecting anything — the
+configuration comes from `--config Release` at build time.
+
+**Configure does not compile.** `ctest` run before `cmake --build` reports
+`\*\*\*Not Run` for every test, and `build\Release\` does not exist yet, so
+`auralite-bench-perf.exe` and `AuraLiteDefrag.exe` are simply not there. Those
+are not build failures; the build step was skipped.
 
 What that gives you, on `WIN32`:
 
@@ -190,6 +201,9 @@ Checking the CMake path before writing these instructions found defects that
 | `add_test` without `WORKING_DIRECTORY` | 4 of 8 ctest tests failed on correct code |
 | `auralite-bench-perf`, `auralite-map` not in CMakeLists | The P9-T04 and P9-T07 tools were `make`-only |
 | `tools/bench_perf.cpp` used `/proc/self/status` and `/tmp` | PT-MEM skipped on Windows |
+| RC language never enabled, `app.rc` not compiled | GUI would link with **no manifest** — no elevation, no PerMonitorV2 DPI, no string table |
+| `WIN32` target with only `wWinMain` | `LNK2019 unresolved external symbol WinMain` |
+| `app.rc` included `../../res/...` | rc.exe resolves includes from its include path, not from the file's directory |
 
 The crash campaign stays POSIX-only by design: it spawns children with
 `fork()`, hands them commands through `mkfifo` channels and SIGKILLs them. A
