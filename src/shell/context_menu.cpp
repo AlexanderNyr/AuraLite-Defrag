@@ -4,6 +4,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <shellapi.h>   // ShellExecuteW - shlwapi.h does not include this
 #include <shobjidl.h>
 #include <shlwapi.h>
 #endif

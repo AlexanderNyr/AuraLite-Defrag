@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -272,10 +273,14 @@ void RunScenario(const std::string& input) {
     // exercises the file-size check on the real entry point.
     const auto path = std::filesystem::temp_directory_path() / "auralite-fuzz-scenario.json";
     {
-        std::FILE* f = std::fopen(path.string().c_str(), "wb");
-        if (!f) return;
-        std::fwrite(input.data(), 1, input.size(), f);
-        std::fclose(f);
+        // std::ofstream rather than std::fopen: fopen is ISO C, but MSVC marks
+        // it deprecated and /W4 /WX /sdl turns C4996 into a hard error. Using
+        // the C++ stream keeps the fuzzer building on both toolchains without
+        // switching the deprecation warning off project-wide.
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) return;
+        out.write(input.data(), static_cast<std::streamsize>(input.size()));
+        if (!out) return;
     }
     auto r = LoadScenarioFile(path);
     if (r) {
@@ -450,11 +455,17 @@ int CheckLimits() {
     // The scenario loader enforces the same limits at its own entry point.
     {
         const auto path = std::filesystem::temp_directory_path() / "auralite-fuzz-oversize.json";
-        std::FILE* f = std::fopen(path.string().c_str(), "wb");
-        if (f) {
-            std::string big(kMaxInputBytes + 1024, ' ');
-            std::fwrite(big.data(), 1, big.size(), f);
-            std::fclose(f);
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            // Cannot construct the fixture, so the limit cannot be exercised.
+            // Reported as a failure, not skipped: a check that silently does
+            // not run is how limits rot.
+            std::fprintf(stderr, "LIMIT FAIL: could not create oversize fixture\n");
+            ++failures;
+        } else {
+            const std::string big(kMaxInputBytes + 1024, ' ');
+            out.write(big.data(), static_cast<std::streamsize>(big.size()));
+            out.close();
             if (LoadScenarioFile(path).Ok()) {
                 std::fprintf(stderr, "LIMIT FAIL: scenario loader accepted oversize file\n");
                 ++failures;
