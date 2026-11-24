@@ -111,7 +111,7 @@ UniqueHandle RealNtfsBackend::OpenVolumeForFsctl() const {
 }
 
 UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAccess) const {
-    UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES);
+    UniqueHandle hVol = OpenVolumeForFsctl();
     if (!hVol.Valid()) return UniqueHandle{};
 
     FILE_ID_DESCRIPTOR desc{};
@@ -448,7 +448,9 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
             fe.flags.isMetadata = (!fe.name.empty() && fe.name[0] == '$');
 
             if (!fe.flags.isDirectory) {
-                UniqueHandle hf = OpenFileByReference(fe.id, FILE_READ_ATTRIBUTES);
+                // FILE_READ_DATA, not FILE_READ_ATTRIBUTES: FSCTL_GET_RETRIEVAL_POINTERS
+                // is issued on this handle and refuses to run without it.
+                UniqueHandle hf = OpenFileByReference(fe.id, FILE_READ_ATTRIBUTES | FILE_READ_DATA);
                 if (hf.Valid()) {
                     LARGE_INTEGER fsize{};
                     if (::GetFileSizeEx(hf.Get(), &fsize)) {
@@ -471,6 +473,19 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
                             fe.fragmentCount = static_cast<std::uint32_t>(fe.extents.size());
                             for (const auto& e : fe.extents) fe.allocatedClusters += e.clusterCount;
                         }
+                    } else {
+                        // The extent read failed. Leaving fragmentCount at 0 made
+                        // the file indistinguishable from a contiguous one, so a
+                        // volume of 160k unreadable files reported "0 fragmented".
+                        // Count it as unknown and let the caller decide; never as
+                        // "not fragmented".
+                        fe.flags.isLocked = true;
+                        ++extentReadFailures_;
+                        if (extentReadFailures_ <= 3) {
+                            mediaDetector_.NoteProbe("ExtentsFailed file=" + fe.name +
+                                                     " err=" + std::to_string(extRes.Error().win32Error) +
+                                                     " code=" + ErrorCodeName(extRes.Error().code));
+                        }
                     }
                 } else {
                     fe.flags.isLocked = true;
@@ -486,6 +501,12 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
         }
     }
 
+    if (extentReadFailures_ > 0) {
+        mediaDetector_.NoteProbe("ExtentReadFailures total=" + std::to_string(extentReadFailures_) +
+                                 " of " + std::to_string(entries.size()) +
+                                 " (these files were NOT counted as fragmented)");
+    }
+    extentReadFailures_ = 0;
     return Result<std::vector<FileEntry>>::Success(std::move(entries));
 }
 

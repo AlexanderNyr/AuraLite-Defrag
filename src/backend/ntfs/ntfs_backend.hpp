@@ -41,6 +41,9 @@ private:
     UniqueHandle OpenVolumeHandle(DWORD desiredAccess) const;
     // Opens the volume with the access every FSCTL in this backend needs.
     UniqueHandle OpenVolumeForFsctl() const;
+    // Counted so a volume whose extents could not be read is reported as such
+    // instead of as "0 fragmented files".
+    mutable std::uint64_t extentReadFailures_{0};
     UniqueHandle OpenFileByReference(FileId fileId, DWORD desiredAccess) const;
     std::wstring VolumeDevicePath() const;
     std::wstring VolumeRootPath() const;
