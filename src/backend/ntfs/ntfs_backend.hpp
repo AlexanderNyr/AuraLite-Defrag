@@ -45,16 +45,22 @@ private:
     // instead of as "0 fragmented files".
     mutable std::uint64_t extentReadFailures_{0};
     UniqueHandle OpenFileByReference(FileId fileId, DWORD desiredAccess) const;
+    // Full 64-bit reference (record index + sequence) as it came out of the USN
+    // record. FileId only keeps the 48-bit index, and OpenFileById matches the
+    // pair, so the index alone is not enough.
+    mutable std::uint64_t openFailures_{0};
+    void NoteOpenFailure(const std::string& text) const;
     std::wstring VolumeDevicePath() const;
     std::wstring VolumeRootPath() const;
     Result<std::vector<Extent>> ReadRetrievalPointers(HANDLE fileHandle) const;
 #endif
 
     VolumeId volumeId_;
-    RealMediaDetector mediaDetector_;
+    mutable RealMediaDetector mediaDetector_;
     mutable std::mutex moveMutex_; // Single serialised move queue per volume (§3.5)
     std::unordered_map<FileId, std::string> pathCache_;
     std::unordered_map<FileId, FileFlags> flagsCache_;
+    std::unordered_map<FileId, std::uint64_t> refCache_;
     VolumeGeometry cachedGeom_{};
     bool hasCachedGeom_{false};
 };

@@ -110,26 +110,61 @@ UniqueHandle RealNtfsBackend::OpenVolumeForFsctl() const {
     return h;
 }
 
+void RealNtfsBackend::NoteOpenFailure(const std::string& text) const {
+    // Bounded: a volume where nothing opens would otherwise emit 144k lines.
+    if (openFailures_ <= 3) mediaDetector_.NoteProbe(text);
+    ++openFailures_;
+}
+
 UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAccess) const {
     UniqueHandle hVol = OpenVolumeForFsctl();
-    if (!hVol.Valid()) return UniqueHandle{};
-
-    FILE_ID_DESCRIPTOR desc{};
-    desc.dwSize = sizeof(desc);
-    desc.Type = FileIdType;
-    desc.FileId.QuadPart = static_cast<LONGLONG>(fileId);
-
-    HANDLE hFile = ::OpenFileById(hVol.Get(), &desc, desiredAccess,
-                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                  nullptr, FILE_FLAG_BACKUP_SEMANTICS);
-    if (hFile != INVALID_HANDLE_VALUE) {
-        // Protect our own handle from external defrag interference (D-01)
-        MARK_HANDLE_INFO mhi{};
-        mhi.HandleInfo = MARK_HANDLE_PROTECT_CLUSTERS;
-        DWORD ret = 0;
-        ::DeviceIoControl(hFile, FSCTL_MARK_HANDLE, &mhi, sizeof(mhi), nullptr, 0, &ret, nullptr);
+    if (!hVol.Valid()) {
+        NoteOpenFailure("OpenFileById volume handle failed err=" +
+                        std::to_string(::GetLastError()));
+        return UniqueHandle{};
     }
-    return UniqueHandle(hFile);
+
+    // A USN record carries a 64-bit file reference number: a 48-bit record index
+    // plus a 16-bit sequence number. FileId keeps only the index, because that is
+    // the identity the rest of the engine uses, but OpenFileById matches on the
+    // pair. Trying the full reference first and falling back to the bare index
+    // covers both, and every attempt is recorded - 144,838 files reported as
+    // "locked" with no error code is how the extent census stayed at zero.
+    std::uint64_t candidates[2]{};
+    std::size_t count = 0;
+    const auto it = refCache_.find(fileId);
+    if (it != refCache_.end() && it->second != 0) candidates[count++] = it->second;
+    if (count == 0 || candidates[0] != static_cast<std::uint64_t>(fileId)) {
+        candidates[count++] = static_cast<std::uint64_t>(fileId);
+    }
+
+    DWORD lastErr = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        FILE_ID_DESCRIPTOR desc{};
+        desc.dwSize = sizeof(desc);
+        desc.Type = FileIdType;
+        desc.FileId.QuadPart = static_cast<LONGLONG>(candidates[i]);
+
+        HANDLE hFile = ::OpenFileById(hVol.Get(), &desc, desiredAccess,
+                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                      nullptr, FILE_FLAG_BACKUP_SEMANTICS);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            // Protect our own handle from external defrag interference (D-01)
+            MARK_HANDLE_INFO mhi{};
+            mhi.HandleInfo = MARK_HANDLE_PROTECT_CLUSTERS;
+            DWORD ret = 0;
+            ::DeviceIoControl(hFile, FSCTL_MARK_HANDLE, &mhi, sizeof(mhi), nullptr, 0, &ret, nullptr);
+            return UniqueHandle(hFile);
+        }
+        lastErr = ::GetLastError();
+    }
+
+    NoteOpenFailure(std::string("OpenFileById failed id=") + std::to_string(fileId) +
+                    " ref=" + std::to_string(count > 0 ? candidates[0] : 0) +
+                    " tries=" + std::to_string(count) +
+                    " access=" + std::to_string(desiredAccess) +
+                    " err=" + std::to_string(lastErr));
+    return UniqueHandle{};
 }
 
 MediaClass RealNtfsBackend::Media() {
@@ -437,6 +472,7 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
 
             FileEntry fe{};
             fe.id = static_cast<FileId>(rec.fileReferenceNumber & 0x0000FFFFFFFFFFFFULL);
+            refCache_[fe.id] = rec.fileReferenceNumber;
             fe.name = rec.name;
             if (fe.name.empty()) continue;
 

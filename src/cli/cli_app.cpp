@@ -29,35 +29,49 @@ namespace {
 // volume the three groups add up to the file count and "noextent" is zero:
 // a non-empty file that Windows reports as having no extents could not have
 // its layout read, and that is the case that used to hide as "not fragmented".
-std::string ExtentCensus(const std::vector<auralite::FileEntry>& files) {
-    std::size_t resident = 0;
-    std::size_t single = 0;
-    std::size_t multi = 0;
-    std::size_t noExtent = 0;
-    std::size_t locked = 0;
-    std::uint32_t maxExtents = 0;
+struct ExtentCensus {
+    std::size_t single{0};
+    std::size_t multi{0};
+    std::size_t empty{0};
+    std::size_t noExtent{0};
+    std::size_t locked{0};
+    std::uint32_t maxExtents{0};
+
+    bool Blind() const { return locked > 0 || noExtent > 0; }
+
+    std::string Text() const {
+        std::ostringstream os;
+        os << "1ext=" << single << " 2plus=" << multi << " empty=" << empty
+           << " noextent=" << noExtent << " locked=" << locked
+           << " max=" << maxExtents;
+        return os.str();
+    }
+};
+
+// What the backend actually saw per file. A non-empty file that reports no
+// extents could not have its layout read, and that used to hide as "not
+// fragmented"; when the census is blind the probe trace is printed with it so
+// the reason travels to the operator instead of dying inside the backend.
+ExtentCensus CensusExtents(const std::vector<auralite::FileEntry>& files) {
+    ExtentCensus c;
     for (const auto& f : files) {
         if (f.flags.isDirectory) continue;
-        if (f.flags.isLocked) ++locked;
+        if (f.flags.isLocked) ++c.locked;
         const std::uint32_t n = static_cast<std::uint32_t>(f.extents.size());
-        maxExtents = n > maxExtents ? n : maxExtents;
+        c.maxExtents = n > c.maxExtents ? n : c.maxExtents;
         if (n == 0) {
             if (f.sizeBytes > 0) {
-                ++noExtent;
+                ++c.noExtent;
             } else {
-                ++resident;
+                ++c.empty;
             }
         } else if (n == 1) {
-            ++single;
+            ++c.single;
         } else {
-            ++multi;
+            ++c.multi;
         }
     }
-    std::ostringstream os;
-    os << "1ext=" << single << " 2plus=" << multi << " empty=" << resident
-       << " noextent=" << noExtent << " locked=" << locked
-       << " max=" << maxExtents;
-    return os.str();
+    return c;
 }
 
 } // namespace
@@ -450,6 +464,7 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
         if (opts.dryRun) {
             out << StringTable::Lookup("IDS_DRY_RUN_HEADER") << "\n";
         }
+        const ExtentCensus census = CensusExtents(reportSnap.files);
         out << "Volume: " << reportSnap.volumeId
             << " (" << reportSnap.geometry.fsName << ", "
             << FormatInteger(reportSnap.summary.totalClusters) << " clusters, "
@@ -461,13 +476,22 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
             << "MFT: " << reportSnap.mftInfo.fragmentCount << " fragment(s), Zone ["
             << reportSnap.mftZone.zoneStartLcn << ".." << reportSnap.mftZone.zoneEndLcn
             << "), Zone Free: " << reportSnap.mftZone.freeZoneClusters << " clusters\n"
+            << "Extents: " << census.Text() << "\n"
             // Extent census. "Fragmented: 0" is only trustworthy if the extents
             // were actually read, and a file with length but no extents is proof
             // they were not, so both are printed rather than inferred.
-            << "Extents: " << ExtentCensus(reportSnap.files) << "\n"
             << "Moves completed: " << opRes.Value().stepsCompleted
             << " | Verified: " << opRes.Value().stepsVerified
             << " | Skipped: " << opRes.Value().stepsSkipped << "\n";
+        if (census.Blind()) {
+            // The same failure mode that produced "0% fragmented": the layout could
+            // not be read, so the figures above cannot be trusted. Say why, here,
+            // instead of leaving the reason inside the backend.
+            err << "Extent census: " << (census.locked + census.noExtent)
+                << " file(s) could not be read, so the fragmentation figures above\n"
+                << "do not cover them. Probe trace:\n";
+            for (const auto& step : volPtr->Evidence().probeLog) err << "  - " << step << "\n";
+        }
         if (opts.verb == "mft" && opts.mftTier == 3) {
             out << StringTable::Lookup("IDS_MFT_TIER3_REPORT_ONLY") << "\n"
                 << StringTable::Lookup("IDS_MFT_ZONE_GUIDANCE") << "\n";
