@@ -327,6 +327,33 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
     if (!opRes) {
         if (opRes.Error().code == ErrorCode::E_PREFLIGHT_SSD_BLOCKED) {
             err << StringTable::Lookup("IDS_SSD_CLI_REFUSAL") << "\n";
+            // A refusal nobody can explain is a refusal nobody trusts. The media
+            // detector records every probe it made, so print the trace: without
+            // it "Unknown media" is indistinguishable from a genuine SSD, and
+            // the fix (a virtual disk, a different bus) is unguessable.
+            const auto ev = volPtr->Evidence();
+            err << "Media probe trace:\n";
+            if (ev.probeLog.empty()) {
+                err << "  (no probes recorded)\n";
+            } else {
+                for (const auto& step : ev.probeLog) err << "  - " << step << "\n";
+            }
+            err << "  seekPenalty  valid=" << (ev.seekPenaltyValid ? "yes" : "no")
+                << " incurs=" << (ev.incursSeekPenalty ? "yes" : "no") << "\n";
+            err << "  trim         valid=" << (ev.trimValid ? "yes" : "no")
+                << " enabled=" << (ev.trimEnabled ? "yes" : "no") << "\n";
+            err << "  busType      " << ev.busType << "\n";
+            err << "  virtualDisk  " << (ev.isVirtualDisk ? "yes" : "no") << "\n";
+            err << "  vendor/product " << ev.vendorId << " / " << ev.productId << "\n";
+            err << "\nWhat the trace means:\n"
+                   "  VolumeOpenFailed        - the volume could not be opened; run elevated\n"
+                   "  DiskExtentsFailed       - IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS failed\n"
+                   "  MultiOrZeroExtents      - the volume spans several disks (spaces/tiered),\n"
+                   "                            refused fail-closed. Use a single-disk volume.\n"
+                   "  PhysicalDriveOpenFailed - \\\\.\\PhysicalDriveN needs administrator rights\n"
+                   "  SeekPenalty=true        - rotational, this would be allowed for defrag\n"
+                   "  no SeekPenalty line     - the drive did not answer, which is Unknown,\n"
+                   "                            and Unknown is blocked by policy (S-03)\n";
         } else {
             err << StringTable::Lookup(opRes.Error().userMessageKey)
                 << " (" << ErrorCodeName(opRes.Error().code) << ")\n";
