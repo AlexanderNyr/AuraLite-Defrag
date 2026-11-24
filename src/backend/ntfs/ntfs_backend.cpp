@@ -482,9 +482,12 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
                         fe.flags.isLocked = true;
                         ++extentReadFailures_;
                         if (extentReadFailures_ <= 3) {
-                            mediaDetector_.NoteProbe("ExtentsFailed file=" + fe.name +
+                            // Explicit std::string on every piece: "const char* + std::string_view"
+                            // is not a valid operator+ in C++20, and ErrorCodeName returns a
+                            // string_view. MSVC rejects it at /permissive- (C2676).
+                            mediaDetector_.NoteProbe(std::string("ExtentsFailed file=") + std::string(fe.name) +
                                                      " err=" + std::to_string(extRes.Error().win32Error) +
-                                                     " code=" + ErrorCodeName(extRes.Error().code));
+                                                     " code=" + std::string(ErrorCodeName(extRes.Error().code)));
                         }
                     }
                 } else {

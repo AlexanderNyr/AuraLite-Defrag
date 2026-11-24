@@ -38,7 +38,7 @@ TEST_SRCS := \
 
 BUILD_DIR := build_linux
 
-.PHONY: all cli test charts reporting exclusions usn fuzz fuzz-quick crash-campaign sbom audit-negative bench bench-reported perf perf-gate perf-baseline differential golden golden-verify maps docs-check docs-negative clean audit
+.PHONY: all cli test charts reporting exclusions usn fuzz fuzz-quick crash-campaign sbom audit-negative bench bench-reported perf perf-gate perf-baseline differential golden golden-verify maps docs-check docs-negative clean audit wincheck
 
 all: cli test charts reporting exclusions usn bench differential
 
@@ -164,6 +164,15 @@ audit:
 	python3 tools/check_layers.py
 	python3 tools/check_strings.py
 	python3 tools/check_licences.py
+
+# Parses the Windows-only translation units with a mingw cross compiler. They sit
+# behind if(WIN32), so a Linux build never sees them, and two build breaks reached
+# the Windows machine that way. Advisory: without the cross compiler this prints a
+# note and succeeds, so it stays out of the way on a bare checkout.
+wincheck:
+	@python3 tools/win32_syntax_check.py || \
+	  if [ $$? -eq 2 ]; then echo "wincheck: skipped (no mingw); install g++-mingw-w64-x86-64"; \
+	  else exit 1; fi
 
 clean:
 	rm -rf $(BUILD_DIR)
