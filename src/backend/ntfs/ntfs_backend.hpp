@@ -39,6 +39,8 @@ public:
 private:
 #ifdef _WIN32
     UniqueHandle OpenVolumeHandle(DWORD desiredAccess) const;
+    // Opens the volume with the access every FSCTL in this backend needs.
+    UniqueHandle OpenVolumeForFsctl() const;
     UniqueHandle OpenFileByReference(FileId fileId, DWORD desiredAccess) const;
     std::wstring VolumeDevicePath() const;
     std::wstring VolumeRootPath() const;

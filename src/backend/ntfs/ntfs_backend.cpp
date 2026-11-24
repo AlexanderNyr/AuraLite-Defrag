@@ -92,6 +92,24 @@ UniqueHandle RealNtfsBackend::OpenVolumeHandle(DWORD desiredAccess) const {
                                       nullptr));
 }
 
+UniqueHandle RealNtfsBackend::OpenVolumeForFsctl() const {
+    // Every FSCTL this backend issues - FSCTL_GET_NTFS_VOLUME_DATA,
+    // FSCTL_GET_VOLUME_BITMAP, FSCTL_GET_RETRIEVAL_POINTERS,
+    // FSCTL_MARK_HANDLE - requires FILE_READ_DATA on the volume handle.
+    // FILE_READ_ATTRIBUTES is not a substitute: the ioctl fails with
+    // ERROR_ACCESS_DENIED, which used to be misreported as "unsupported
+    // filesystem" and "bitmap I/O error" on perfectly good volumes.
+    //
+    // If FILE_READ_DATA is refused the process is not elevated. In that case the
+    // attribute-only handle is opened anyway, so the caller fails on the ioctl
+    // and reports E_PREFLIGHT_NOT_ELEVATED rather than a filesystem error.
+    UniqueHandle h = OpenVolumeHandle(FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE);
+    if (!h.Valid() && ::GetLastError() == ERROR_ACCESS_DENIED) {
+        h = OpenVolumeHandle(FILE_READ_ATTRIBUTES | SYNCHRONIZE);
+    }
+    return h;
+}
+
 UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAccess) const {
     UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES);
     if (!hVol.Valid()) return UniqueHandle{};
@@ -123,19 +141,7 @@ MediaEvidence RealNtfsBackend::Evidence() {
 }
 
 Result<VolumeGeometry> RealNtfsBackend::Geometry() {
-    // FSCTL_GET_NTFS_VOLUME_DATA is an FSCTL and requires FILE_READ_DATA on the
-    // volume handle; FILE_READ_ATTRIBUTES alone is not enough and the call fails
-    // with ERROR_ACCESS_DENIED. That failure used to be reported as
-    // E_PREFLIGHT_UNSUPPORTED_FS - "Only NTFS volumes are supported" - on a
-    // perfectly good NTFS volume, because both the open and the ioctl collapsed
-    // into the same error. The two are now distinguished.
-    DWORD desiredAccess = FILE_READ_ATTRIBUTES | SYNCHRONIZE | FILE_READ_DATA;
-    UniqueHandle hVol = OpenVolumeHandle(desiredAccess);
-    if (!hVol.Valid() && ::GetLastError() == ERROR_ACCESS_DENIED) {
-        // Not elevated: fall back to the attribute-only access so that at least
-        // the error says "not elevated" rather than "wrong filesystem".
-        hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES | SYNCHRONIZE);
-    }
+    UniqueHandle hVol = OpenVolumeForFsctl();
     if (!hVol.Valid()) {
         return Result<VolumeGeometry>::Failure(
             MakeError(ErrorCode::E_PREFLIGHT_VOLUME_INACCESSIBLE, volumeId_, 0, ::GetLastError()));
@@ -293,7 +299,10 @@ Result<PreflightResult> RealNtfsBackend::Preflight(bool isElevated, double fullD
 }
 
 Result<BitmapSnapshot> RealNtfsBackend::ReadBitmap(Lcn start, ClusterCount count) {
-    UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES);
+    // FSCTL_GET_VOLUME_BITMAP requires FILE_READ_DATA. Opening with
+    // FILE_READ_ATTRIBUTES alone made the very first step of analysis fail with
+    // E_BITMAP_IO on a healthy NTFS volume.
+    UniqueHandle hVol = OpenVolumeForFsctl();
     if (!hVol.Valid()) {
         return Result<BitmapSnapshot>::Failure(MakeError(ErrorCode::E_BITMAP_IO, volumeId_, 0, ::GetLastError()));
     }

@@ -80,6 +80,13 @@ MediaClass RealMediaDetector::Classify(const VolumeId& volumeId) {
             lastEvidence_.seekPenaltyValid = true;
             lastEvidence_.incursSeekPenalty = (desc.IncursSeekPenalty != FALSE);
             lastEvidence_.probeLog.push_back(lastEvidence_.incursSeekPenalty ? "SeekPenalty=true" : "SeekPenalty=false");
+        } else {
+            // A probe that failed is the single most useful line in the trace: it
+            // is the only thing that distinguishes "rotational disk that did not
+            // answer" from "there is no rotational disk here". Swallowing it made
+            // a WD Caviar Blue look identical to a USB bridge.
+            lastEvidence_.probeLog.push_back("SeekPenaltyQueryFailed err=" +
+                                             std::to_string(::GetLastError()));
         }
     }
 
@@ -95,6 +102,9 @@ MediaClass RealMediaDetector::Classify(const VolumeId& volumeId) {
             lastEvidence_.trimValid = true;
             lastEvidence_.trimEnabled = (desc.TrimEnabled != FALSE);
             lastEvidence_.probeLog.push_back(lastEvidence_.trimEnabled ? "Trim=true" : "Trim=false");
+        } else {
+            lastEvidence_.probeLog.push_back("TrimQueryFailed err=" +
+                                             std::to_string(::GetLastError()));
         }
     }
 
@@ -131,8 +141,37 @@ MediaClass RealMediaDetector::Classify(const VolumeId& volumeId) {
         (lastEvidence_.seekPenaltyValid && !lastEvidence_.incursSeekPenalty)) {
         return MediaClass::SolidState;
     }
-    // USB/SD/MMC bridges that don't confirm seek penalty => Unknown (blocked)
+    // The seek-penalty answer is authoritative when it exists: it is the only
+    // probe that actually describes the medium rather than the bus.
     if (!lastEvidence_.seekPenaltyValid) {
+        // No answer. Two very different situations live here and treating them
+        // the same is why a WD Caviar Blue on SATA was classified as Unknown:
+        //
+        //   * a bridge or a virtual disk that hides the property -> Unknown, and
+        //     fail-closed is correct;
+        //   * a SATA/ATA disk that simply refuses the query while answering
+        //     everything else.
+        //
+        // For the second case there is real evidence: a rotating disk reportss
+        // TRIM as absent (ATA TRIM is an SSD feature), and the bus is a physical
+        // ATA/SATA path. That combination is Spinning. Note this can never turn
+        // an SSD into a Spinning disk: any SSD that answers TRIM=true or
+        // SeekPenalty=false was already classified above, and NVMe was already
+        // excluded by bus type.
+        constexpr std::uint32_t kBusAta = 3;   // BusTypeAta
+        constexpr std::uint32_t kBusSata = 11; // BusTypeSata
+        const bool ataBus = (lastEvidence_.busType == kBusAta ||
+                             lastEvidence_.busType == kBusSata);
+        const bool trimAnsweredAbsent = lastEvidence_.trimValid && !lastEvidence_.trimEnabled;
+        const bool vendorLooksVirtual =
+            lastEvidence_.isVirtualDisk ||
+            lastEvidence_.productId.find("Virtual") != std::string::npos ||
+            lastEvidence_.productId.find("Msft") != std::string::npos;
+        if (ataBus && trimAnsweredAbsent && !vendorLooksVirtual) {
+            lastEvidence_.probeLog.push_back(
+                "ClassifiedSpinning from BusType+noTRIM (seek penalty unanswered)");
+            return MediaClass::Spinning;
+        }
         return MediaClass::Unknown;
     }
     return MediaClass::Spinning;
