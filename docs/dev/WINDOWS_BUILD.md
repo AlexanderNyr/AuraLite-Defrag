@@ -53,10 +53,33 @@ The patch touches 106 files, adds ~90k lines and contains **no binary hunks**, s
 
 ## 2. Configure and build
 
-```powershell
+**One command does configure, build, test and bench:**
+
+```bat
+scripts\windows-build.bat
+```
+
+It stops at the first failing step and prints what to do about it. Use
+`scripts\windows-build.bat quick` to stop after the build.
+
+The equivalent by hand is two separate commands, and **both are required**:
+
+```bat
 cmake -G "Visual Studio 17 2022" -A x64 -B build
 cmake --build build --config Release --parallel
 ```
+
+**`/GL /O2` only exist in a real configuration.** All optimisation flags in
+`cmake/CompilerOptions.cmake` are guarded by `$<CONFIG:Release>`, so a build made
+without one compiles at `/Od`: correct but 3–10x slower, which shows up as
+failing performance budgets (PT-02c measured 2.5 ms instead of 0.23 ms) rather
+than as a test failure. Always pass `--config Release` to `cmake --build`, and
+check `build\Release\` actually exists before benchmarking.
+
+`cmake -B build` only *generates* the build files. It compiles nothing, so
+`build\Release\` does not exist afterwards and every `.exe` path fails with
+"the system cannot find the path specified". This is the single most common way
+to lose ten minutes on a Visual Studio build.
 
 **Do not pass `-DCMAKE_BUILD_TYPE`.** A Visual Studio generator is multi-config:
 CMake ignores the variable and warns "Manually-specified variables were not used

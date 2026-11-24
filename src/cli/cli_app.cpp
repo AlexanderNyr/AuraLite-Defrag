@@ -324,27 +324,30 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
     auto opRes = controller.RunOperation(*volPtr, *fsPtr, planOpts, sink, journal, token,
                                          isElevated, &beforeSnap, &afterSnap);
 
+    // Any preflight failure deserves the probe trace: a bare error code on a
+    // healthy volume is unactionable, and "Only NTFS volumes are supported" on an
+    // NTFS volume is actively misleading.
+    const auto printProbeTrace = [&]() {
+        const auto ev = volPtr->Evidence();
+        err << "Media probe trace:\n";
+        if (ev.probeLog.empty()) {
+            err << "  (no probes recorded)\n";
+        } else {
+            for (const auto& step : ev.probeLog) err << "  - " << step << "\n";
+        }
+        err << "  seekPenalty  valid=" << (ev.seekPenaltyValid ? "yes" : "no")
+            << " incurs=" << (ev.incursSeekPenalty ? "yes" : "no") << "\n";
+        err << "  trim         valid=" << (ev.trimValid ? "yes" : "no")
+            << " enabled=" << (ev.trimEnabled ? "yes" : "no") << "\n";
+        err << "  busType      " << ev.busType << "\n";
+        err << "  virtualDisk  " << (ev.isVirtualDisk ? "yes" : "no") << "\n";
+        err << "  vendor/product " << ev.vendorId << " / " << ev.productId << "\n";
+    };
+
     if (!opRes) {
         if (opRes.Error().code == ErrorCode::E_PREFLIGHT_SSD_BLOCKED) {
             err << StringTable::Lookup("IDS_SSD_CLI_REFUSAL") << "\n";
-            // A refusal nobody can explain is a refusal nobody trusts. The media
-            // detector records every probe it made, so print the trace: without
-            // it "Unknown media" is indistinguishable from a genuine SSD, and
-            // the fix (a virtual disk, a different bus) is unguessable.
-            const auto ev = volPtr->Evidence();
-            err << "Media probe trace:\n";
-            if (ev.probeLog.empty()) {
-                err << "  (no probes recorded)\n";
-            } else {
-                for (const auto& step : ev.probeLog) err << "  - " << step << "\n";
-            }
-            err << "  seekPenalty  valid=" << (ev.seekPenaltyValid ? "yes" : "no")
-                << " incurs=" << (ev.incursSeekPenalty ? "yes" : "no") << "\n";
-            err << "  trim         valid=" << (ev.trimValid ? "yes" : "no")
-                << " enabled=" << (ev.trimEnabled ? "yes" : "no") << "\n";
-            err << "  busType      " << ev.busType << "\n";
-            err << "  virtualDisk  " << (ev.isVirtualDisk ? "yes" : "no") << "\n";
-            err << "  vendor/product " << ev.vendorId << " / " << ev.productId << "\n";
+            printProbeTrace();
             err << "\nWhat the trace means:\n"
                    "  VolumeOpenFailed        - the volume could not be opened; run elevated\n"
                    "  DiskExtentsFailed       - IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS failed\n"
@@ -357,6 +360,13 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
         } else {
             err << StringTable::Lookup(opRes.Error().userMessageKey)
                 << " (" << ErrorCodeName(opRes.Error().code) << ")\n";
+            printProbeTrace();
+            if (opRes.Error().code == ErrorCode::E_PREFLIGHT_NOT_ELEVATED ||
+                opRes.Error().code == ErrorCode::E_PREFLIGHT_VOLUME_INACCESSIBLE) {
+                err << "\nThis is a privilege problem, not a filesystem problem.\n"
+                       "Run the terminal as administrator (the exe's manifest asks for\n"
+                       "elevation, but a console launched unelevated cannot pass it on).\n";
+            }
         }
         return MapErrorToCliExitCode(opRes.Error().code);
     }

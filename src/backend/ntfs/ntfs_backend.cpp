@@ -123,7 +123,19 @@ MediaEvidence RealNtfsBackend::Evidence() {
 }
 
 Result<VolumeGeometry> RealNtfsBackend::Geometry() {
-    UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES | SYNCHRONIZE);
+    // FSCTL_GET_NTFS_VOLUME_DATA is an FSCTL and requires FILE_READ_DATA on the
+    // volume handle; FILE_READ_ATTRIBUTES alone is not enough and the call fails
+    // with ERROR_ACCESS_DENIED. That failure used to be reported as
+    // E_PREFLIGHT_UNSUPPORTED_FS - "Only NTFS volumes are supported" - on a
+    // perfectly good NTFS volume, because both the open and the ioctl collapsed
+    // into the same error. The two are now distinguished.
+    DWORD desiredAccess = FILE_READ_ATTRIBUTES | SYNCHRONIZE | FILE_READ_DATA;
+    UniqueHandle hVol = OpenVolumeHandle(desiredAccess);
+    if (!hVol.Valid() && ::GetLastError() == ERROR_ACCESS_DENIED) {
+        // Not elevated: fall back to the attribute-only access so that at least
+        // the error says "not elevated" rather than "wrong filesystem".
+        hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES | SYNCHRONIZE);
+    }
     if (!hVol.Valid()) {
         return Result<VolumeGeometry>::Failure(
             MakeError(ErrorCode::E_PREFLIGHT_VOLUME_INACCESSIBLE, volumeId_, 0, ::GetLastError()));
@@ -137,8 +149,17 @@ Result<VolumeGeometry> RealNtfsBackend::Geometry() {
     DWORD bytesRet = 0;
     if (!::DeviceIoControl(hVol.Get(), FSCTL_GET_NTFS_VOLUME_DATA,
                            nullptr, 0, &buf, sizeof(buf), &bytesRet, nullptr)) {
+        // ERROR_ACCESS_DENIED here means the handle lacks FILE_READ_DATA, which
+        // is a privilege problem, not a filesystem problem.
+        const DWORD err = ::GetLastError();
+        const ErrorCode code = (err == ERROR_ACCESS_DENIED)
+                                   ? ErrorCode::E_PREFLIGHT_NOT_ELEVATED
+                                   : ErrorCode::E_PREFLIGHT_UNSUPPORTED_FS;
+        // Record why, so the caller can print it instead of a bare error code.
+        mediaDetector_.NoteProbe("GeometryFailed err=" + std::to_string(err) +
+                                 (err == ERROR_ACCESS_DENIED ? " (needs administrator)" : ""));
         return Result<VolumeGeometry>::Failure(
-            MakeError(ErrorCode::E_PREFLIGHT_UNSUPPORTED_FS, volumeId_, 0, ::GetLastError()));
+            MakeError(code, volumeId_, static_cast<std::int64_t>(err), err));
     }
 
     VolumeGeometry g{};
