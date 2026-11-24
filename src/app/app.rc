@@ -4,11 +4,14 @@
 #include "res/strings/ids.h"
 #include "res/strings/en-US.rc"
 
-// The manifest must be the process default manifest (CREATEPROCESS_MANIFEST_
-// RESOURCE_ID). Requiring elevation, PerMonitorV2 DPI and Windows 10/11
-// compatibility all live in that file; without it the app silently starts
-// unelevated and cannot open a volume.
-1 RT_MANIFEST "app.manifest"
+// The application manifest is NOT embedded here. The MSVC linker already
+// generates and embeds one (it adds /MANIFEST by default), and a second
+// RT_MANIFEST at ID 1 makes CVTRES fail with
+//   CVT1100: duplicate resource. type: MANIFEST, name: 1
+// followed by LNK1123. The manifest content comes from CMake instead:
+// target_link_options(... /MANIFEST:EMBED /MANIFESTINPUT:...). If that ever has
+// to move back into this file, /MANIFEST:NO must be set on the same target,
+// because the two paths cannot both be active.
 
 // Application icon: shows in Explorer and on the taskbar.
 IDI_AURALITE_APP ICON "res/assets/auralite.ico"

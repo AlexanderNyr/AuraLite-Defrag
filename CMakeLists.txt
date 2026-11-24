@@ -85,6 +85,17 @@ if(WIN32)
     # LNK2019 unresolved external symbol WinMain, because only wWinMain exists.
     if(MSVC)
         target_link_options(AuraLiteDefrag PRIVATE /ENTRY:wWinMainCRTStartup)
+        # The manifest is embedded by the linker, not by app.rc. Embedding it in
+        # both places is a hard error (CVTRES CVT1100: duplicate resource
+        # MANIFEST/1, then LNK1123), and the linker-generated one is empty, so
+        # the elevation and DPI settings would be lost either way. This is the
+        # one path that keeps them.
+        target_link_options(AuraLiteDefrag PRIVATE
+            /MANIFEST:EMBED
+            "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/src/app/app.manifest"
+        )
+        set_property(TARGET AuraLiteDefrag APPEND PROPERTY
+                     LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/app/app.manifest")
     endif()
     auralite_apply_compiler_options(AuraLiteDefrag)
 endif()
