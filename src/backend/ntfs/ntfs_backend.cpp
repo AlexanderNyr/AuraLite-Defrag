@@ -598,7 +598,7 @@ Result<MftZoneInfo> RealNtfsBackend::Zone() {
 }
 
 Result<std::uint64_t> RealNtfsBackend::ComputeWindowChecksum(FileId fileId) {
-    UniqueHandle hf = OpenFileByReference(fileId, FILE_READ_DATA);
+    UniqueHandle hf = OpenFileByReference(fileId, FILE_READ_ATTRIBUTES | FILE_READ_DATA);
     if (!hf.Valid()) {
         return Result<std::uint64_t>::Failure(MakeError(ErrorCode::E_VERIFY_READBACK_FAILED, volumeId_, fileId, ::GetLastError()));
     }

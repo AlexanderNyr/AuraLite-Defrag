@@ -19,6 +19,48 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
+
+namespace {
+
+// One line describing what the backend actually saw per file. On a healthy
+// volume the three groups add up to the file count and "noextent" is zero:
+// a non-empty file that Windows reports as having no extents could not have
+// its layout read, and that is the case that used to hide as "not fragmented".
+std::string ExtentCensus(const std::vector<auralite::FileEntry>& files) {
+    std::size_t resident = 0;
+    std::size_t single = 0;
+    std::size_t multi = 0;
+    std::size_t noExtent = 0;
+    std::size_t locked = 0;
+    std::uint32_t maxExtents = 0;
+    for (const auto& f : files) {
+        if (f.flags.isDirectory) continue;
+        if (f.flags.isLocked) ++locked;
+        const std::uint32_t n = static_cast<std::uint32_t>(f.extents.size());
+        maxExtents = n > maxExtents ? n : maxExtents;
+        if (n == 0) {
+            if (f.sizeBytes > 0) {
+                ++noExtent;
+            } else {
+                ++resident;
+            }
+        } else if (n == 1) {
+            ++single;
+        } else {
+            ++multi;
+        }
+    }
+    std::ostringstream os;
+    os << "1ext=" << single << " 2plus=" << multi << " empty=" << resident
+       << " noextent=" << noExtent << " locked=" << locked
+       << " max=" << maxExtents;
+    return os.str();
+}
+
+} // namespace
 
 namespace auralite {
 
@@ -419,6 +461,10 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
             << "MFT: " << reportSnap.mftInfo.fragmentCount << " fragment(s), Zone ["
             << reportSnap.mftZone.zoneStartLcn << ".." << reportSnap.mftZone.zoneEndLcn
             << "), Zone Free: " << reportSnap.mftZone.freeZoneClusters << " clusters\n"
+            // Extent census. "Fragmented: 0" is only trustworthy if the extents
+            // were actually read, and a file with length but no extents is proof
+            // they were not, so both are printed rather than inferred.
+            << "Extents: " << ExtentCensus(reportSnap.files) << "\n"
             << "Moves completed: " << opRes.Value().stepsCompleted
             << " | Verified: " << opRes.Value().stepsVerified
             << " | Skipped: " << opRes.Value().stepsSkipped << "\n";
