@@ -4,14 +4,14 @@
 #include "res/strings/ids.h"
 #include "res/strings/en-US.rc"
 
-// The application manifest is NOT embedded here. The MSVC linker already
-// generates and embeds one (it adds /MANIFEST by default), and a second
-// RT_MANIFEST at ID 1 makes CVTRES fail with
-//   CVT1100: duplicate resource. type: MANIFEST, name: 1
-// followed by LNK1123. The manifest content comes from CMake instead:
-// target_link_options(... /MANIFEST:EMBED /MANIFESTINPUT:...). If that ever has
-// to move back into this file, /MANIFEST:NO must be set on the same target,
-// because the two paths cannot both be active.
+// The process manifest. rc.exe embeds it as RT_MANIFEST/ID 1, and the linker is
+// told /MANIFEST:NO so that it does not also generate one: two RT_MANIFEST
+// resources with the same ID is CVT1100 followed by LNK1123.
+//
+// Requiring elevation, PerMonitorV2 DPI and the Windows 10/11 supportedOS entry
+// all live in this file. Without it the app starts unelevated and cannot open a
+// volume, and the cluster map is drawn at the wrong scale on a high-DPI screen.
+1 RT_MANIFEST "app.manifest"
 
 // Application icon: shows in Explorer and on the taskbar.
 IDI_AURALITE_APP ICON "res/assets/auralite.ico"

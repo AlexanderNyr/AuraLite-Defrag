@@ -85,15 +85,22 @@ if(WIN32)
     # LNK2019 unresolved external symbol WinMain, because only wWinMain exists.
     if(MSVC)
         target_link_options(AuraLiteDefrag PRIVATE /ENTRY:wWinMainCRTStartup)
-        # The manifest is embedded by the linker, not by app.rc. Embedding it in
-        # both places is a hard error (CVTRES CVT1100: duplicate resource
-        # MANIFEST/1, then LNK1123), and the linker-generated one is empty, so
-        # the elevation and DPI settings would be lost either way. This is the
-        # one path that keeps them.
-        target_link_options(AuraLiteDefrag PRIVATE
-            /MANIFEST:EMBED
-            "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/src/app/app.manifest"
-        )
+        # The manifest is embedded by app.rc, and the linker must not embed its
+        # own. Three distinct failures came from getting this wrong:
+        #
+        #   both sources active  -> CVTRES CVT1100: duplicate resource
+        #                           MANIFEST, then LNK1123
+        #   linker alone         -> an empty manifest, so no requireAdministrator
+        #                           and no PerMonitorV2
+        #   linker + /MANIFESTINPUT -> mt.exe merges the two and rejects them:
+        #                           c1010 "Values of attribute level not equal",
+        #                           then LNK1327
+        #
+        # /MANIFEST:NO removes the linker's manifest entirely, so app.rc's
+        # RT_MANIFEST is the single source and mt.exe is never invoked. That is
+        # how the project was originally meant to build; the missing piece was
+        # only this option.
+        target_link_options(AuraLiteDefrag PRIVATE /MANIFEST:NO)
         set_property(TARGET AuraLiteDefrag APPEND PROPERTY
                      LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/app/app.manifest")
     endif()
