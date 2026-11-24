@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/result.hpp"
+#include "interfaces/execution_outcome.hpp"
 #include "core/types.hpp"
 #include "interfaces/i_journal.hpp"
 #include "interfaces/i_progress_sink.hpp"

@@ -193,6 +193,14 @@ Result<void> BinaryJournal::OpenOrCreate(std::uint64_t opId, std::uint64_t volum
     }
 
     if (std::filesystem::exists(filePath_, ec) && std::filesystem::file_size(filePath_, ec) >= kDataStartOffset) {
+        // Recover() leaves the stream open for append so the caller can continue
+        // the operation. Re-opening a stream that is already open fails on every
+        // implementation, which used to turn a legitimate "recover then open"
+        // sequence into E_JOURNAL_IO. Close it first.
+        if (stream_.is_open()) {
+            stream_.flush();
+            stream_.close();
+        }
         std::uint32_t slot = 0;
         auto hdr = ReadBestHeader(slot);
         if (!hdr) return Result<void>::Failure(hdr.Error());

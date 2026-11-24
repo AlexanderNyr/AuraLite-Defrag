@@ -9,6 +9,7 @@ add_library(auralite_core STATIC
     src/core/json.cpp
     src/core/logger.cpp
     src/core/config.cpp
+    src/core/exclusions.cpp
     src/engine/policy_gate.cpp
     src/engine/journal.cpp
     src/engine/planner.cpp
@@ -16,9 +17,14 @@ add_library(auralite_core STATIC
     src/engine/operation_controller.cpp
     src/backend/emulator/emulator_backend.cpp
     src/backend/emulator/scenario_loader.cpp
+    src/backend/usn/usn_parser.cpp
     src/reporting/cluster_aggregator.cpp
     src/reporting/statistics.cpp
     src/reporting/csv_exporter.cpp
+    src/reporting/chart_data_model.cpp
+    src/reporting/csv_reader.cpp
+    src/differential/differential_oracle.cpp
+    src/differential/golden_trace.cpp
 )
 target_include_directories(auralite_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 auralite_apply_compiler_options(auralite_core)
@@ -67,6 +73,100 @@ if(WIN32)
     auralite_apply_compiler_options(AuraLiteDefrag)
 endif()
 
+# The crash campaign spawns children through fork/mkfifo and kills them with
+# _exit(). It is a POSIX CI tool, not part of the product: a Windows build that
+# compiled these targets would fail on #error in crash_child.cpp, so it is
+# explicitly excluded rather than silently broken.
+if(NOT WIN32)
+    add_executable(auralite-crash-child
+        tests/crash/crash_child.cpp
+    )
+    target_link_libraries(auralite-crash-child PRIVATE auralite_core)
+    target_include_directories(auralite-crash-child PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    auralite_apply_compiler_options(auralite-crash-child)
+
+    add_executable(auralite-crash-campaign
+        tests/crash/crash_campaign.cpp
+    )
+    # The campaign includes both "tests/crash/crash_channel.hpp" (root-relative)
+    # and product headers (src-relative), so it needs both include roots.
+    target_include_directories(auralite-crash-campaign PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    auralite_apply_compiler_options(auralite-crash-campaign)
+    # The campaign execs the child binary, so it needs the real path: the build
+    # directory name belongs to the generator, not to the source tree.
+    add_test(NAME AuraLiteCrashCampaign
+             COMMAND auralite-crash-campaign --trials 40 --child $<TARGET_FILE:auralite-crash-child>
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endif()
+
+add_executable(auralite-usn-tests
+    tests/unit/test_usn_parser.cpp
+)
+target_link_libraries(auralite-usn-tests PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-usn-tests)
+
+add_executable(auralite-fuzz
+    tools/fuzz_parsers.cpp
+)
+target_link_libraries(auralite-fuzz PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-fuzz)
+
+add_executable(auralite-exclusions-tests
+    tests/unit/test_exclusions.cpp
+)
+target_link_libraries(auralite-exclusions-tests PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-exclusions-tests)
+
+add_executable(auralite-reporting-tests
+    tests/unit/test_reporting.cpp
+)
+target_link_libraries(auralite-reporting-tests PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-reporting-tests)
+
+add_executable(auralite-bench-reporting
+    tools/bench_reporting.cpp
+)
+target_link_libraries(auralite-bench-reporting PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-bench-reporting)
+
+# P9-T04: the budget and regression harness (PT-01...PT-08, PT-MEM).
+add_executable(auralite-bench-perf
+    tools/bench_perf.cpp
+)
+target_link_libraries(auralite-bench-perf PRIVATE auralite_core)
+if(WIN32)
+    target_link_libraries(auralite-bench-perf PRIVATE psapi)
+endif()
+auralite_apply_compiler_options(auralite-bench-perf)
+
+# P9-T07: renders a scenario to SVG for the user guide.
+add_executable(auralite-map
+    tools/map_render.cpp
+)
+target_link_libraries(auralite-map PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-map)
+
+add_executable(auralite-chart-model-tests
+    tests/unit/test_chart_model.cpp
+)
+target_link_libraries(auralite-chart-model-tests PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-chart-model-tests)
+
+add_executable(auralite-differential-tests
+    tests/differential/test_oracle.cpp
+)
+target_link_libraries(auralite-differential-tests PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-differential-tests)
+
+add_executable(auralite-golden
+    tools/golden_traces.cpp
+)
+target_link_libraries(auralite-golden PRIVATE auralite_core)
+auralite_apply_compiler_options(auralite-golden)
+
 enable_testing()
 add_executable(auralite_tests
     src/cli/cli_app.cpp
@@ -80,4 +180,26 @@ else()
     target_sources(auralite_tests PRIVATE src/scheduler/task_scheduler.cpp)
 endif()
 auralite_apply_compiler_options(auralite_tests)
-add_test(NAME AuraLiteUnitAndScenarioSuite COMMAND auralite_tests)
+
+# The suites load tests/scenarios/*.json and tests/golden/* relative to the
+# working directory, so ctest must run them from the source root. Running them
+# from the build tree made every scenario-driven case fail with "checked >= 15"
+# and aborted the reporting suite on a missing src/ directory.
+set(AURALITE_TEST_CWD ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_test(NAME AuraLiteUnitAndScenarioSuite COMMAND auralite_tests
+         WORKING_DIRECTORY ${AURALITE_TEST_CWD})
+add_test(NAME AuraLiteUsnParserSuite COMMAND auralite-usn-tests
+         WORKING_DIRECTORY ${AURALITE_TEST_CWD})
+add_test(NAME AuraLiteExclusionsSuite COMMAND auralite-exclusions-tests
+         WORKING_DIRECTORY ${AURALITE_TEST_CWD})
+add_test(NAME AuraLiteReportingSuite COMMAND auralite-reporting-tests
+         WORKING_DIRECTORY ${AURALITE_TEST_CWD})
+add_test(NAME AuraLiteChartDataModelSuite COMMAND auralite-chart-model-tests
+         WORKING_DIRECTORY ${AURALITE_TEST_CWD})
+add_test(NAME AuraLiteDifferentialOracleSuite COMMAND auralite-differential-tests
+         WORKING_DIRECTORY ${AURALITE_TEST_CWD})
+# Golden corpus must not drift: regenerate with `auralite-golden --write`
+# and commit the diff together with the intentional behaviour change.
+add_test(NAME AuraLiteGoldenCorpus COMMAND auralite-golden --verify
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

@@ -14,6 +14,7 @@ LAYER = {
     "backend": 2,
     "engine": 4,      # contains L3 (online_mode) + L4 (planner, journal, policy_gate, controller)
     "reporting": 5,
+    "differential": 5,
     "ui": 6,
     "cli": 6,
     "scheduler": 6,
@@ -68,7 +69,7 @@ def main() -> int:
                     f"{rel}:{lineno}: engine (L3/L4) must depend on interfaces, not '{inc}'"
                 )
             # Strict decoupling: reporting (L5) must NEVER depend on backend, engine, or platform
-            if src_mod == "reporting" and inc_mod in ("backend", "engine", "platform"):
+            if src_mod in ("reporting", "differential") and inc_mod in ("backend", "engine", "platform"):
                 violations.append(
                     f"{rel}:{lineno}: reporting (L5) must depend on interfaces/core, not '{inc}'"
                 )

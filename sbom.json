@@ -1,0 +1,98 @@
+{
+  "sbomVersion": 1,
+  "format": "auralite-sbom/1",
+  "project": {
+    "name": "AuraLite-Defrag",
+    "license": "Apache-2.0"
+  },
+  "components": [
+    {
+      "name": "AuraLite-Defrag",
+      "scope": "runtime",
+      "license": "Apache-2.0",
+      "redistributed": true
+    },
+    {
+      "name": "Windows SDK (Win32, D2D1, DWrite, WIC, TaskSchd)",
+      "scope": "platform-sdk",
+      "license": "OS-Component",
+      "redistributed": false
+    },
+    {
+      "name": "CMake",
+      "scope": "build",
+      "license": "BSD-3-Clause",
+      "redistributed": false
+    },
+    {
+      "name": "LLVM clang-tidy / clang-format",
+      "scope": "build-qa",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "redistributed": false
+    },
+    {
+      "name": "Inno Setup",
+      "scope": "packaging",
+      "license": "Inno-Setup-License",
+      "redistributed": false
+    },
+    {
+      "name": "MSVC v143 / Windows SDK headers",
+      "scope": "build",
+      "license": "Proprietary-Microsoft-SDK",
+      "redistributed": false
+    },
+    {
+      "name": "Python 3",
+      "scope": "build-qa",
+      "license": "PSF-2.0",
+      "redistributed": false
+    },
+    {
+      "name": "MSIX SDK tools (MakeAppx/SignTool)",
+      "scope": "packaging",
+      "license": "OS-Component",
+      "redistributed": false
+    },
+    {
+      "name": "Catch2 (optional, not used)",
+      "scope": "build-qa-optional",
+      "license": "BSL-1.0",
+      "redistributed": false
+    },
+    {
+      "name": "nlohmann/json (optional, not used)",
+      "scope": "build-qa-optional",
+      "license": "MIT",
+      "redistributed": false
+    }
+  ],
+  "assets": [
+    {
+      "file": "res/assets/auralite_logo.svg",
+      "sha256": "babbe6ddafec1624ed8ee1c9c835792895cead27f778bffca8088d5a26c7cb1a",
+      "license": "Apache-2.0"
+    },
+    {
+      "file": "res/assets/auralite_32.png",
+      "sha256": "bf7bb9c3118868c60a1c465c12e586074872f508f2c33a55311cc861b81e0a97",
+      "license": "Apache-2.0"
+    },
+    {
+      "file": "res/assets/auralite.ico",
+      "sha256": "4f6c7ef631a8e70b87a7f4ad238fb5253c6b8e2285e883f3858e48e173dfdd7d",
+      "license": "Apache-2.0"
+    }
+  ],
+  "resources": [
+    {
+      "file": "res/strings/ids.h",
+      "sha256": "c70217922fc76c6be35858b36b8d3b961970b929ae5ddaa854f465da5dd8a8c8"
+    },
+    {
+      "file": "res/strings/en-US.rc",
+      "sha256": "50c0f134af13c20a210cd08ec7c9cdb3697d374d915c0b3736ef96deeb751355"
+    }
+  ],
+  "sourceFileCount": 88
+}

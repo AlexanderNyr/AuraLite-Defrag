@@ -1,0 +1,15 @@
+# AuraLite-Defrag performance baseline (P9-T04). Medians of 5 runs.
+# PT-MEM is in MB (peak memory, 1M files); all others are milliseconds.
+# id value. Regenerate deliberately: make perf-baseline
+PT-02a 1.8187
+PT-02b 12.3827
+PT-02c 0.2586
+PT-01 0.0181
+PT-04 143.3248
+PT-06a 3.2607
+PT-06b 4.7644
+PT-08a 80.9458
+PT-07a 0.0273
+PT-07c 0.3120
+PT-MEM 303.8477
+PT-05 0.1156

@@ -24,9 +24,12 @@ ctest --test-dir build --output-on-failure
 ### Windows 10/11 x64 (MSVC v143 — Full Win32 GUI + NTFS Backend + CLI + Tests)
 ```powershell
 cmake -G "Visual Studio 17 2022" -A x64 -B build
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure   # 8/8
 ```
+
+Step-by-step Windows instructions, including a safe way to test against a real
+NTFS volume and what is expected to be open: **[docs/dev/WINDOWS_BUILD.md](docs/dev/WINDOWS_BUILD.md)**.
 
 ## CLI Quick Examples
 ```bash

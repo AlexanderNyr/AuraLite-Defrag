@@ -12,7 +12,10 @@ FORBIDDEN_TERMS = [
     re.compile(r"\bccleaner\b", re.IGNORECASE),
 ]
 
-SCAN_DIRS = ["src", "res", "tests", "packaging", "docs/user", "docs/dev"]
+SCAN_DIRS = ["src", "res", "tests", "packaging", "docs"]
+
+# Roots whose top-level *.md files are user-facing prose and must be scanned too.
+SCAN_ROOT_FILES = ["README.md", "THIRD-PARTY.md", "NOTICE", "CONTRIBUTING.md", "LICENSE"]
 
 
 def main() -> int:
@@ -29,6 +32,15 @@ def main() -> int:
                 for m in pat.finditer(text):
                     rel = p.relative_to(REPO).as_posix()
                     errors.append(f"{rel}: forbidden clean-room term '{m.group(0)}'")
+
+    for name in SCAN_ROOT_FILES:
+        p = REPO / name
+        if not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        for pat in FORBIDDEN_TERMS:
+            for m in pat.finditer(text):
+                errors.append(f"{name}: forbidden clean-room term '{m.group(0)}'")
 
     # Verify res/strings/ids.h IDs match res/strings/en-US.rc
     ids_h = (REPO / "res/strings/ids.h").read_text(encoding="utf-8")

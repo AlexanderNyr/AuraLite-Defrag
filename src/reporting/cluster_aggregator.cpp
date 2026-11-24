@@ -1,6 +1,7 @@
 #include "reporting/cluster_aggregator.hpp"
 
 #include <algorithm>
+#include <unordered_map>
 
 namespace auralite {
 
@@ -118,6 +119,7 @@ ClusterGrid ClusterAggregator::BuildGrid(const AnalysisSnapshot& snapshot,
     }
 
     // 2. Paint every file's extents (subtracting from Free first, then MftZone if overlapping)
+    std::unordered_map<FileId, std::uint32_t> hitInfoByFile;
     for (const auto& f : snapshot.files) {
         if (f.flags.resident || f.extents.empty()) continue;
         const ClusterCategory cat = ClassifyFileCategory(f, selectedFileId, activeFileId);
@@ -149,11 +151,32 @@ ClusterGrid ClusterAggregator::BuildGrid(const AnalysisSnapshot& snapshot,
                 cell.counts[static_cast<std::size_t>(cat)] += placed;
                 if (cell.dominantFileId == kInvalidFileId || cat >= cell.dominant) {
                     cell.dominantFileId = f.id;
+                    // Record what a hover needs, here, where the file record is
+                    // already in hand. Any later pass costs a fresh traversal of
+                    // the file set, which is the thing being avoided.
+                    if (cell.hitInfo == kInvalidHitInfo) {
+                        // One record per file, not one per cell: a 64-cluster
+                        // file spread over 64 one-cluster cells would otherwise
+                        // copy its name 64 times.
+                        const auto known = hitInfoByFile.find(f.id);
+                        if (known != hitInfoByFile.end()) {
+                            cell.hitInfo = known->second;
+                        } else {
+                            const auto idx = static_cast<std::uint32_t>(grid.hitFiles.size());
+                            grid.hitFiles.push_back(FileHitInfo{f.id, f.name, f.fragmentCount});
+                            hitInfoByFile.emplace(f.id, idx);
+                            cell.hitInfo = idx;
+                        }
+                    }
                 }
             }
         }
     }
 
+    // Record what a hit test must report about each cell's dominant file.
+    // HitTest runs per mouse move; a linear scan of the whole file set there
+    // costs 0.30 ms with 250,000 files (P9-T04), which is a tenth of the
+    // 100 ms input budget spent on hovering a single cell.
     // 3. Reconcile any bitmap-allocated clusters not covered by enumerated file extents
     if (snapshot.bitmap.totalClusters > 0) {
         for (std::size_t ci = 0; ci < grid.cells.size(); ++ci) {
@@ -275,7 +298,16 @@ HitTestInfo ClusterAggregator::HitTest(const ClusterGrid& grid,
     info.dominantFileId = cell->dominantFileId;
     info.belongsToMftZone = cell->belongsToMftZone;
 
+    if (cell->hitInfo != kInvalidHitInfo && cell->hitInfo < grid.hitFiles.size()) {
+        const auto& hi = grid.hitFiles[cell->hitInfo];
+        info.dominantFileName = hi.name;
+        info.dominantFragmentCount = hi.fragmentCount;
+        return info;
+    }
     if (cell->dominantFileId != kInvalidFileId) {
+        // Not recorded (the grid predates this cell's dominant file, or was
+        // built without one): fall back to the caller's snapshot, which the
+        // caller owns and keeps alive for the duration of the call.
         for (const auto& f : snapshot.files) {
             if (f.id == cell->dominantFileId) {
                 info.dominantFileName = f.name;
@@ -285,6 +317,22 @@ HitTestInfo ClusterAggregator::HitTest(const ClusterGrid& grid,
         }
     }
     return info;
+}
+
+// Convert sRGB channels to a packed 0xAARRGGBB word. Alpha is always opaque:
+// the map is composited by the renderer, not blended by the aggregator.
+std::vector<std::uint32_t> ClusterAggregator::BuildPixelBuffer(
+    const ClusterGrid& grid,
+    const std::array<std::uint32_t, kClusterCategoryCount>& categoryAbgr,
+    std::uint32_t backgroundAbgr) {
+    const std::size_t count = static_cast<std::size_t>(grid.cols) * grid.rows;
+    std::vector<std::uint32_t> pixels(count, backgroundAbgr);
+    if (grid.cells.size() != count) return pixels;
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto cat = static_cast<std::size_t>(grid.cells[i].dominant);
+        if (cat < categoryAbgr.size()) pixels[i] = categoryAbgr[cat];
+    }
+    return pixels;
 }
 
 } // namespace auralite

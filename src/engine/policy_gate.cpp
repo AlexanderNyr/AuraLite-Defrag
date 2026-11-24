@@ -27,10 +27,11 @@ bool IsProtectedSystemFileName(std::string_view name) noexcept {
 }
 } // namespace
 
-PolicyGate::PolicyGate(AppConfig config) : config_(std::move(config)) {}
+PolicyGate::PolicyGate(AppConfig config) : config_(std::move(config)) { RebuildExclusions(); }
 
 void PolicyGate::UpdateConfig(AppConfig config) {
     config_ = std::move(config);
+    RebuildExclusions();
 }
 
 Result<void> PolicyGate::CanWriteToVolume(const PreflightResult& preflight,
@@ -123,26 +124,19 @@ bool PolicyGate::GlobMatchCaseInsensitive(std::string_view pattern, std::string_
 }
 
 bool PolicyGate::IsFileExcluded(const FileEntry& file) const {
-    if (file.flags.isExcluded) return true;
-    for (const auto& rule : config_.exclusions) {
-        if (!rule.enabled) continue;
-        if (rule.minSizeBytes > 0 && file.sizeBytes < rule.minSizeBytes) continue;
-        if (rule.maxSizeBytes > 0 && file.sizeBytes > rule.maxSizeBytes) continue;
+    return exclusions_.IsExcluded(file);
+}
 
-        // Match either full path, filename, or prefix
-        if (GlobMatchCaseInsensitive(rule.pattern, file.path) ||
-            GlobMatchCaseInsensitive(rule.pattern, file.name)) {
-            return true;
-        }
-        // Prefix directory match if pattern ends with '/' or '\'
-        if (!rule.pattern.empty() && (rule.pattern.back() == '\\' || rule.pattern.back() == '/')) {
-            if (file.path.size() >= rule.pattern.size() &&
-                IEquals(std::string_view(file.path).substr(0, rule.pattern.size()), rule.pattern)) {
-                return true;
-            }
-        }
-    }
-    return false;
+ExclusionVerdict PolicyGate::EvaluateExclusion(const FileEntry& file) const {
+    return exclusions_.Evaluate(file);
+}
+
+void PolicyGate::RebuildExclusions() {
+    // Invalid rules are a configuration error surfaced at load time by
+    // LoadConfigFile; by the time we get here the rules are known-good. A
+    // failure here would mean the engine could not compile them, in which case
+    // we fall back to an empty rule set rather than excluding everything.
+    (void)exclusions_.SetRules(config_.exclusions);
 }
 
 SkipReason PolicyGate::ClassifySkipReason(const FileEntry& file,

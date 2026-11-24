@@ -1,9 +1,26 @@
 AuraLite-Defrag
 Copyright 2026 AuraLite-Defrag Contributors
 
-This product includes original software developed for AuraLite-Defrag,
-licensed under the Apache License, Version 2.0.
+This product includes original software developed for AuraLite-Defrag and
+licensed under the Apache License, Version 2.0. The full licence text is in the
+LICENSE file at the repository root.
 
-All visual assets, string tables, identifiers, and documentation in this
-repository are original clean-room works or verified Apache-2.0-compatible
-dependencies listed in THIRD-PARTY.md.
+AuraLite-Defrag has NO third-party runtime dependencies. The shipped binaries
+link only against the C++20 standard library and operating-system components
+provided by Windows (Win32, Direct2D, DirectWrite, WIC, Task Scheduler 2.0 COM,
+Storage and Volume IOCTL/FSCTL interfaces). No third-party library code is
+compiled into or redistributed with those binaries.
+
+All visual assets, string tables, message identifiers and documentation in this
+repository are original clean-room works authored for this project, or are
+verified Apache-2.0-compatible dependencies. Every asset is registered with its
+author, source, licence and SHA-256 hash in res/assets/asset_register.json and
+in sbom.json; the hashes are re-verified on every audit run.
+
+Build-time, QA and packaging tools are not redistributed and are listed in
+THIRD-PARTY.md with their licences and written justifications where the licence
+is not an open-source licence. The complete component inventory, including
+per-file hashes, is in sbom.json.
+
+Corresponding-source and licence questions: see THIRD-PARTY.md and
+docs/adr/ADR-009-licence-policy.md.

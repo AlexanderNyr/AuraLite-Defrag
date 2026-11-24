@@ -1,0 +1,143 @@
+{
+  "errorCodeValue": 0,
+  "files": [
+    {
+      "allocatedClusters": 256,
+      "extents": [
+        {
+          "count": 256,
+          "lcn": 16,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "$mft",
+      "sizeBytes": 16777216
+    },
+    {
+      "allocatedClusters": 4,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 32768,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "$mftmirr",
+      "sizeBytes": 262144
+    },
+    {
+      "allocatedClusters": 1740,
+      "extents": [
+        {
+          "count": 435,
+          "lcn": 6573,
+          "vcn": 0
+        },
+        {
+          "count": 435,
+          "lcn": 7011,
+          "vcn": 435
+        },
+        {
+          "count": 435,
+          "lcn": 7451,
+          "vcn": 870
+        },
+        {
+          "count": 435,
+          "lcn": 7888,
+          "vcn": 1305
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_0.zip",
+      "sizeBytes": 114032640
+    },
+    {
+      "allocatedClusters": 1600,
+      "extents": [
+        {
+          "count": 400,
+          "lcn": 8326,
+          "vcn": 0
+        },
+        {
+          "count": 400,
+          "lcn": 8728,
+          "vcn": 400
+        },
+        {
+          "count": 400,
+          "lcn": 9133,
+          "vcn": 800
+        },
+        {
+          "count": 400,
+          "lcn": 9539,
+          "vcn": 1200
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_1.log",
+      "sizeBytes": 104857600
+    },
+    {
+      "allocatedClusters": 1724,
+      "extents": [
+        {
+          "count": 431,
+          "lcn": 9942,
+          "vcn": 0
+        },
+        {
+          "count": 431,
+          "lcn": 10379,
+          "vcn": 431
+        },
+        {
+          "count": 431,
+          "lcn": 10814,
+          "vcn": 862
+        },
+        {
+          "count": 431,
+          "lcn": 11249,
+          "vcn": 1293
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_2.dat",
+      "sizeBytes": 112984064
+    }
+  ],
+  "label": "emulator",
+  "mft": {
+    "fragmentCount": 1,
+    "freeZoneClusters": 6297,
+    "inUseRecords": 100,
+    "mftStartLcn": 16,
+    "totalRecords": 1024,
+    "totalZoneClusters": 6553,
+    "zoneEndLcn": 6569,
+    "zoneStartLcn": 16
+  },
+  "moveCallCount": 12,
+  "moves": [],
+  "scenarioId": "SC-06",
+  "skips": [],
+  "summary": {
+    "fileFragmentationPct": 60000,
+    "fragmentedFiles": 3,
+    "freeClusters": 60212,
+    "largestFreeRunClusters": 32764,
+    "residentFiles": 0,
+    "totalClusters": 65536,
+    "totalFiles": 5,
+    "unmovableFiles": 2,
+    "usedClusters": 5324,
+    "volumeFragmentationPct": 95116
+  },
+  "traceFormatVersion": 1
+}

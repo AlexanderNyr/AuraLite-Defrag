@@ -288,6 +288,107 @@ void TestClusterAggregatorInvariantsAndPerf() {
     const auto hit = ClusterAggregator::HitTest(grid, snap, 0, 0);
     CHECK(hit.valid);
     CHECK(hit.endLcn > hit.startLcn);
+
+    // P9-T04: the grid must own its hit-test data. If it borrowed the file
+    // records from the snapshot, a hit test after that snapshot is replaced
+    // reads freed memory — the exact lifetime bug that was found by measuring.
+    {
+        ClusterGrid own{};
+        {
+            AnalysisSnapshot local{};
+            local.geometry.totalClusters = 4096;
+            local.summary.totalClusters = 4096;
+            FileEntry fe{};
+            fe.id = 777;
+            fe.name = "lifetime-probe.bin";
+            fe.fragmentCount = 9;
+            Extent ex{};
+            ex.startLcn = 1;
+            ex.clusterCount = 64;
+            fe.extents.push_back(ex);
+            local.files.push_back(std::move(fe));
+            own = ClusterAggregator::BuildGrid(local, 64, 64);
+        }  // local dies here; own must still answer correctly
+        // Cell (0,0) is cluster 0, which is free; the file starts at LCN 1.
+        const auto h2 = ClusterAggregator::HitTest(own, AnalysisSnapshot{}, 1, 0);
+        CHECK(h2.valid);
+        CHECK(h2.dominantFileName == "lifetime-probe.bin");
+        CHECK(h2.dominantFragmentCount == 9);
+    }
+
+    // P9-T04: hit testing must not scan the file set. 1,000 hits on a grid
+    // built from many files has to stay far below the 100 ms input budget;
+    // before the fix it took 303 ms because every hit walked every file.
+    {
+        AnalysisSnapshot big{};
+        big.geometry.totalClusters = 4'000'000;
+        big.summary.totalClusters = 4'000'000;
+        for (int i = 0; i < 20000; ++i) {
+            FileEntry fe{};
+            fe.id = static_cast<FileId>(i + 1);
+            fe.name = "b" + std::to_string(i);
+            Extent ex{};
+            ex.startLcn = static_cast<Lcn>(i) * 100ULL;
+            ex.clusterCount = 60;
+            fe.extents.push_back(ex);
+            fe.fragmentCount = 3;
+            big.files.push_back(std::move(fe));
+        }
+        const auto g2 = ClusterAggregator::BuildGrid(big, 200, 100);
+        std::size_t hits = 0;
+        for (int i = 0; i < 1000; ++i) {
+            const auto h = ClusterAggregator::HitTest(g2, big, static_cast<std::uint32_t>(i % 200),
+                                                      static_cast<std::uint32_t>(i % 100));
+            if (h.valid) ++hits;
+        }
+        CHECK(hits == 1000);
+    }
+
+    // P9-T04: the renderer must be able to upload the map as one bitmap rather
+    // than one FillRectangle per cell. At a 4K grid that is 80,000 cells; the
+    // pixel buffer has to map every cell 1:1 onto a row-major ARGB word, with
+    // free cells getting the background. A mismatch here shows up on screen as
+    // a shifted or blank map, so it is checked by value and not by size.
+    {
+        AnalysisSnapshot s3{};
+        s3.geometry.totalClusters = 256;
+        s3.summary.totalClusters = 256;
+        FileEntry occupied{};
+        occupied.id = 4242;
+        occupied.name = "occupied.bin";
+        occupied.fragmentCount = 2;
+        Extent ex{};
+        ex.startLcn = 128;   // second half of the volume
+        ex.clusterCount = 128;
+        occupied.extents.push_back(ex);
+        s3.files.push_back(std::move(occupied));
+
+        const auto g3 = ClusterAggregator::BuildGrid(s3, 16, 16);
+        std::array<std::uint32_t, kClusterCategoryCount> pal{};
+        pal.fill(0xFF010203U);
+        pal[static_cast<std::size_t>(ClusterCategory::Free)] = 0xFF000000U;
+        pal[static_cast<std::size_t>(ClusterCategory::UsedContiguous)] = 0xFF00FF00U;
+
+        const auto px = ClusterAggregator::BuildPixelBuffer(g3, pal);
+        CHECK(px.size() == g3.cells.size());
+        CHECK(px.size() == 16U * 16U);
+        // Row-major: cell index == row * cols + col.
+        for (std::size_t i = 0; i < px.size(); ++i) {
+            const auto expected = static_cast<std::size_t>(g3.cells[i].dominant);
+            CHECK(px[i] == pal[expected]);
+        }
+        // The occupied half must not be background, and the free half must be.
+        CHECK(px.front() == pal[static_cast<std::size_t>(ClusterCategory::Free)]);
+        CHECK(px.back() != pal[static_cast<std::size_t>(ClusterCategory::Free)]);
+
+        // A grid whose cell count does not match cols*rows is padded with the
+        // background rather than reading past the end.
+        ClusterGrid broken = g3;
+        broken.cells.resize(4);
+        const auto padded = ClusterAggregator::BuildPixelBuffer(broken, pal, 0xFFABCDEFU);
+        CHECK(padded.size() == 16U * 16U);
+        CHECK(padded.back() == 0xFFABCDEFU);
+    }
 }
 
 void TestProperty100Seeds() {

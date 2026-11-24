@@ -14,11 +14,19 @@ enum class ThemeMode : std::uint8_t {
     Dark = 1,
 };
 
+// ExclusionKind lives in core/exclusions.hpp. Declared here as a plain enum to
+// avoid a config.hpp -> exclusions.hpp include cycle; the two must stay in sync
+// (exclusions.cpp static_asserts the numeric values).
+enum class ExclusionKind : std::uint8_t;
+
 struct ExclusionRule {
     std::string pattern; // path prefix, glob wildcard, or extension (e.g., "*.vhdx")
     std::uint64_t minSizeBytes{0};
     std::uint64_t maxSizeBytes{0}; // 0 = unbounded
     bool enabled{true};
+    // Explicit kind; Path preserves the original semantics and is the default so
+    // existing config files keep working unchanged.
+    ExclusionKind kind = static_cast<ExclusionKind>(0);
 };
 
 struct AppConfig {

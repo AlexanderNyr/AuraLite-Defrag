@@ -1,7 +1,13 @@
 {
   "schemaVersion": 1,
   "projectLicense": "Apache-2.0",
-  "forbiddenLicenses": ["GPL-2.0", "GPL-3.0", "LGPL-2.1", "LGPL-3.0", "AGPL-3.0"],
+  "forbiddenLicenses": [
+    "GPL-2.0",
+    "GPL-3.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "AGPL-3.0"
+  ],
   "entries": [
     {
       "name": "AuraLite-Defrag",
@@ -17,7 +23,8 @@
       "license": "OS-Component",
       "source": "https://learn.microsoft.com/en-us/windows/win32/",
       "redistributed": false,
-      "adr": "ADR-002"
+      "adr": "ADR-002",
+      "justification": "OS/SDK components shipped as part of Windows under the Microsoft Windows SDK licence. Not redistributed: every API resolves against the target OS at runtime, and no SDK binary is bundled into the shipped artifacts. Mandated by R-004/R-005/R-006/R-038."
     },
     {
       "name": "CMake",
@@ -42,6 +49,51 @@
       "justification": "Custom permissive build-time installer tool; not linked into or shipped with AuraLite-Defrag binaries.",
       "source": "https://jrsoftware.org/files/is/license.txt",
       "redistributed": false,
+      "adr": "ADR-009"
+    },
+    {
+      "name": "MSVC v143 / Windows SDK headers",
+      "scope": "build",
+      "license": "Proprietary-Microsoft-SDK",
+      "source": "https://visualstudio.microsoft.com/license-terms/",
+      "redistributed": false,
+      "justification": "Proprietary compiler and header set, used at build time only. No MSVC or SDK binary is redistributed; the resulting executable links against OS-provided DLLs. Alternative toolchains are not supported in v1.",
+      "adr": "ADR-009"
+    },
+    {
+      "name": "Python 3",
+      "scope": "build-qa",
+      "license": "PSF-2.0",
+      "source": "https://docs.python.org/3/license.html",
+      "redistributed": false,
+      "justification": "Runs the repository audit scripts (tools/check_*.py). Permissive and GPL-compatible; build-time only, never shipped.",
+      "adr": "ADR-009"
+    },
+    {
+      "name": "MSIX SDK tools (MakeAppx/SignTool)",
+      "scope": "packaging",
+      "license": "OS-Component",
+      "source": "https://learn.microsoft.com/en-us/windows/msix/",
+      "redistributed": false,
+      "justification": "Part of the Windows SDK. Used to package and sign the installer; no MSIX runtime or SDK binary is redistributed with the product.",
+      "adr": "ADR-009"
+    },
+    {
+      "name": "Catch2 (optional, not used)",
+      "scope": "build-qa-optional",
+      "license": "BSL-1.0",
+      "source": "https://github.com/catchorg/Catch2/blob/devel/LICENSE.txt",
+      "redistributed": false,
+      "justification": "Optional external test framework mentioned in CMake. The repository ships its own runner and does not link Catch2 in any configuration.",
+      "adr": "ADR-009"
+    },
+    {
+      "name": "nlohmann/json (optional, not used)",
+      "scope": "build-qa-optional",
+      "license": "MIT",
+      "source": "https://github.com/nlohmann/json/blob/develop/LICENSE.MIT",
+      "redistributed": false,
+      "justification": "Optional tooling dependency mentioned in CMake. The repository ships its own strict JSON parser; no nlohmann code is compiled in.",
       "adr": "ADR-009"
     }
   ]

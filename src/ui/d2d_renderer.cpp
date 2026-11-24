@@ -1,5 +1,10 @@
 #include "ui/d2d_renderer.hpp"
 
+#ifdef _WIN32
+#include <array>
+#include <dxgiformat.h>
+#endif
+
 namespace auralite {
 
 D2DRenderer::~D2DRenderer() {
@@ -95,34 +100,64 @@ void D2DRenderer::RenderClusterMap(HWND hwnd,
     }
 
     if (grid.cols > 0 && grid.rows > 0 && !grid.cells.empty()) {
-        std::array<ID2D1SolidColorBrush*, kClusterCategoryCount> brushes{};
+        // One bitmap upload instead of one FillRectangle per cell. At 4K the
+        // grid is 400x225 = 90,000 cells, and 90,000 FillRectangle calls per
+        // frame cannot be paid for on the UI thread. The pixel buffer is built
+        // at L5 (ClusterAggregator::BuildPixelBuffer) where it is unit-testable
+        // without Direct2D, then stretched to the map rectangle by the GPU.
+        std::array<std::uint32_t, kClusterCategoryCount> paletteAbgr{};
         for (std::size_t i = 0; i < kClusterCategoryCount; ++i) {
-            rt->CreateSolidColorBrush(ToD2D(palette.clusterColors[i]), &brushes[i]);
+            const RgbColor c = palette.clusterColors[i];
+            paletteAbgr[i] = 0xFF000000U | (static_cast<std::uint32_t>(c.r) << 16) |
+                             (static_cast<std::uint32_t>(c.g) << 8) |
+                             static_cast<std::uint32_t>(c.b);
         }
+        const RgbColor bg = palette.panelBg;
+        const std::uint32_t bgAbgr = 0xFF000000U | (static_cast<std::uint32_t>(bg.r) << 16) |
+                                     (static_cast<std::uint32_t>(bg.g) << 8) |
+                                     static_cast<std::uint32_t>(bg.b);
+
+        const auto pixels = ClusterAggregator::BuildPixelBuffer(grid, paletteAbgr, bgAbgr);
 
         const float pad = 8.0f;
         const float mapW = (sz.width - 2.0f * pad) > 10.0f ? (sz.width - 2.0f * pad) : 10.0f;
         const float mapH = (sz.height - topOffset - 28.0f) > 10.0f ? (sz.height - topOffset - 28.0f) : 10.0f;
 
-        const std::uint32_t visCols = std::max(1U, grid.cols / static_cast<std::uint32_t>(std::max(1, zoomFactor)));
-        const std::uint32_t visRows = std::max(1U, grid.rows / static_cast<std::uint32_t>(std::max(1, zoomFactor)));
-        const float cellW = mapW / static_cast<float>(visCols);
-        const float cellH = mapH / static_cast<float>(visRows);
+        ID2D1Bitmap* mapBitmap = nullptr;
+        const D2D1_BITMAP_PROPERTIES props = D2D1::BitmapProperties(
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+            96.0f, 96.0f);
+        const HRESULT made = rt->CreateBitmap(D2D1::SizeU(grid.cols, grid.rows), pixels.data(),
+                                              grid.cols * sizeof(std::uint32_t), props, &mapBitmap);
 
-        for (std::uint32_t r = 0; r < visRows; ++r) {
-            for (std::uint32_t c = 0; c < visCols; ++c) {
-                const auto* cell = grid.CellAt(c, r);
-                if (!cell) continue;
-                auto* br = brushes[static_cast<std::size_t>(cell->dominant)];
-                if (!br) continue;
-                const float x0 = pad + static_cast<float>(c) * cellW;
-                const float y0 = topOffset + static_cast<float>(r) * cellH;
-                rt->FillRectangle(D2D1::RectF(x0, y0, x0 + cellW - 0.5f, y0 + cellH - 0.5f), br);
+        if (SUCCEEDED(made) && mapBitmap) {
+            rt->DrawBitmap(mapBitmap, D2D1::RectF(pad, topOffset, pad + mapW, topOffset + mapH),
+                           D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+            mapBitmap->Release();
+        } else {
+            // Fall back to the per-cell path rather than drawing nothing.
+            const std::uint32_t visCols = std::max(1U, grid.cols / static_cast<std::uint32_t>(std::max(1, zoomFactor)));
+            const std::uint32_t visRows = std::max(1U, grid.rows / static_cast<std::uint32_t>(std::max(1, zoomFactor)));
+            const float cellW = mapW / static_cast<float>(visCols);
+            const float cellH = mapH / static_cast<float>(visRows);
+            std::array<ID2D1SolidColorBrush*, kClusterCategoryCount> brushes{};
+            for (std::size_t i = 0; i < kClusterCategoryCount; ++i) {
+                rt->CreateSolidColorBrush(ToD2D(palette.clusterColors[i]), &brushes[i]);
             }
-        }
-
-        for (auto* b : brushes) {
-            if (b) b->Release();
+            for (std::uint32_t r = 0; r < visRows; ++r) {
+                for (std::uint32_t c = 0; c < visCols; ++c) {
+                    const auto* cell = grid.CellAt(c, r);
+                    if (!cell) continue;
+                    auto* br = brushes[static_cast<std::size_t>(cell->dominant)];
+                    if (!br) continue;
+                    const float x0 = pad + static_cast<float>(c) * cellW;
+                    const float y0 = topOffset + static_cast<float>(r) * cellH;
+                    rt->FillRectangle(D2D1::RectF(x0, y0, x0 + cellW - 0.5f, y0 + cellH - 0.5f), br);
+                }
+            }
+            for (auto* b : brushes) {
+                if (b) b->Release();
+            }
         }
     }
 

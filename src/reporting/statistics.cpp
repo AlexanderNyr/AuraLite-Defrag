@@ -38,22 +38,42 @@ FragmentHistogram StatisticsEngine::ComputeHistogram(const AnalysisSnapshot& sna
 
 std::vector<TopFragmentedEntry> StatisticsEngine::ComputeTopN(const AnalysisSnapshot& snapshot,
                                                               std::size_t n) {
-    std::vector<TopFragmentedEntry> entries;
-    entries.reserve(snapshot.files.size());
+    std::vector<TopFragmentedEntry> out;
+    if (n == 0) return out;
+
+    // P7-T06 acceptance (3): recompute <= 20 ms at 250k files. The previous
+    // implementation materialised a TopFragmentedEntry (two std::string copies)
+    // for every fragmented file and then fully sorted them, which cost ~480 ms
+    // at 250k files. Ranking only needs the sort keys, so rank lightweight
+    // references first and copy strings for the winners alone.
+    std::vector<const FileEntry*> candidates;
+    candidates.reserve(snapshot.files.size());
     for (const auto& f : snapshot.files) {
-        if (f.fragmentCount > 1) {
-            entries.push_back({f.id, f.name, f.path, f.sizeBytes, f.fragmentCount, f.state});
-        }
+        if (f.fragmentCount > 1) candidates.push_back(&f);
     }
-    std::sort(entries.begin(), entries.end(), [](const TopFragmentedEntry& a, const TopFragmentedEntry& b) {
-        if (a.fragmentCount != b.fragmentCount) return a.fragmentCount > b.fragmentCount;
-        if (a.sizeBytes != b.sizeBytes) return a.sizeBytes > b.sizeBytes;
-        return a.id < b.id;
-    });
-    if (entries.size() > n) {
-        entries.resize(n);
+    if (candidates.empty()) return out;
+
+    const auto better = [](const FileEntry* a, const FileEntry* b) noexcept {
+        if (a->fragmentCount != b->fragmentCount) return a->fragmentCount > b->fragmentCount;
+        if (a->sizeBytes != b->sizeBytes) return a->sizeBytes > b->sizeBytes;
+        return a->id < b->id;
+    };
+
+    const std::size_t take = candidates.size() < n ? candidates.size() : n;
+    if (take < candidates.size()) {
+        // partial_sort: O(m log n) instead of O(m log m).
+        std::partial_sort(candidates.begin(), candidates.begin() + static_cast<std::ptrdiff_t>(take),
+                          candidates.end(), better);
+    } else {
+        std::sort(candidates.begin(), candidates.end(), better);
     }
-    return entries;
+
+    out.reserve(take);
+    for (std::size_t i = 0; i < take; ++i) {
+        const FileEntry& f = *candidates[i];
+        out.push_back({f.id, f.name, f.path, f.sizeBytes, f.fragmentCount, f.state});
+    }
+    return out;
 }
 
 void StatisticsEngine::RecordThroughputSample(std::vector<ThroughputPoint>& series,

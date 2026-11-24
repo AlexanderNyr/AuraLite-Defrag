@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="672" height="808" viewBox="0 0 672 808" font-family="Segoe UI,Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="16" y="28" font-size="13" font-weight="600" fill="#1e1e1e">SC-01 after defragmentation — every file contiguous, 0% fragmented</text>
+<text x="16" y="46" font-size="10" fill="#5a5a5a">16384 clusters, 4 KiB each, media spinning</text>
+<g shape-rendering="crispEdges">
+<rect x="16" y="56" width="60" height="5" fill="#5f7f97"/>
+<rect x="76" y="56" width="20" height="5" fill="#f4f4f2"/>
+<rect x="96" y="56" width="560" height="5" fill="#b9a44f"/>
+<rect x="16" y="61" width="640" height="5" fill="#b9a44f"/>
+<rect x="16" y="66" width="640" height="5" fill="#b9a44f"/>
+<rect x="16" y="71" width="640" height="5" fill="#b9a44f"/>
+<rect x="16" y="76" width="80" height="5" fill="#b9a44f"/>
+<rect x="96" y="76" width="560" height="5" fill="#e8e4d2"/>
+<rect x="16" y="81" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="86" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="91" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="96" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="101" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="106" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="111" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="116" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="121" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="126" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="131" width="640" height="5" fill="#e8e4d2"/>
+<rect x="16" y="136" width="80" height="5" fill="#e8e4d2"/>
+<rect x="96" y="136" width="560" height="5" fill="#f4f4f2"/>
+<rect x="16" y="141" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="146" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="151" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="156" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="161" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="166" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="171" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="176" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="181" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="186" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="191" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="196" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="201" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="206" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="211" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="216" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="221" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="226" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="231" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="236" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="241" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="246" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="251" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="256" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="261" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="266" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="271" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="276" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="281" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="286" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="291" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="296" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="301" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="306" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="311" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="316" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="321" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="326" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="331" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="336" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="341" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="346" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="351" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="356" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="361" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="366" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="371" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="376" width="20" height="5" fill="#5f7f97"/>
+<rect x="36" y="376" width="620" height="5" fill="#f4f4f2"/>
+<rect x="16" y="381" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="386" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="391" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="396" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="401" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="406" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="411" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="416" width="480" height="5" fill="#f4f4f2"/>
+<rect x="496" y="416" width="160" height="5" fill="#5f7f97"/>
+<rect x="16" y="421" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="426" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="431" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="436" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="441" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="446" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="451" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="456" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="461" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="466" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="471" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="476" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="481" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="486" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="491" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="496" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="501" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="506" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="511" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="516" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="521" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="526" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="531" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="536" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="541" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="546" width="640" height="5" fill="#5f7f97"/>
+<rect x="16" y="551" width="210" height="5" fill="#5f7f97"/>
+<rect x="226" y="551" width="430" height="5" fill="#f4f4f2"/>
+<rect x="16" y="556" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="561" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="566" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="571" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="576" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="581" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="586" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="591" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="596" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="601" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="606" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="611" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="616" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="621" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="626" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="631" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="636" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="641" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="646" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="651" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="656" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="661" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="666" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="671" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="676" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="681" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="686" width="640" height="5" fill="#f4f4f2"/>
+<rect x="16" y="691" width="640" height="5" fill="#f4f4f2"/>
+</g>
+<rect x="16" y="716" width="12" height="12" fill="#5f7f97" stroke="#cfcfcf"/>
+<text x="33" y="726" font-size="10" fill="#3a3a3a">used, contiguous</text>
+<rect x="149" y="716" width="12" height="12" fill="#c2683f" stroke="#cfcfcf"/>
+<text x="166" y="726" font-size="10" fill="#3a3a3a">fragmented</text>
+<rect x="246" y="716" width="12" height="12" fill="#b9a44f" stroke="#cfcfcf"/>
+<text x="263" y="726" font-size="10" fill="#3a3a3a">$MFT zone</text>
+<rect x="337" y="716" width="12" height="12" fill="#e8e4d2" stroke="#cfcfcf"/>
+<text x="354" y="726" font-size="10" fill="#3a3a3a">free in $MFT zone</text>
+<rect x="476" y="716" width="12" height="12" fill="#f4f4f2" stroke="#cfcfcf"/>
+<text x="493" y="726" font-size="10" fill="#3a3a3a">free</text>
+<text x="16" y="756" font-size="10" fill="#3a3a3a">files 162 · fragmented 0 → 0.00% of allocated clusters</text>
+<text x="16" y="798" font-size="9" fill="#8a8a8a">Rendered by tools/map_render.cpp from the engine's own snapshot (scenario SC-01, seed 1001). No third-party imagery.</text>
+</svg>

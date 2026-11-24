@@ -1,0 +1,1804 @@
+{
+  "errorCodeValue": 0,
+  "files": [
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 16,
+          "lcn": 1068,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "$bitmap",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 16,
+          "lcn": 1048,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "$logfile",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 256,
+      "extents": [
+        {
+          "count": 256,
+          "lcn": 16,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "$mft",
+      "sizeBytes": 1048576
+    },
+    {
+      "allocatedClusters": 4,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 4096,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "$mftmirr",
+      "sizeBytes": 16384
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 16,
+          "lcn": 1108,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "hiberfil.sys",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 16,
+          "lcn": 1088,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "pagefile.sys",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 16,
+          "lcn": 1128,
+          "vcn": 0
+        }
+      ],
+      "fragmentCount": 1,
+      "key": "swapfile.sys",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1044,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1064,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1084,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1104,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_0.zip",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 20,
+      "extents": [
+        {
+          "count": 5,
+          "lcn": 1144,
+          "vcn": 0
+        },
+        {
+          "count": 5,
+          "lcn": 1155,
+          "vcn": 5
+        },
+        {
+          "count": 5,
+          "lcn": 1162,
+          "vcn": 10
+        },
+        {
+          "count": 5,
+          "lcn": 1172,
+          "vcn": 15
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_1.log",
+      "sizeBytes": 81920
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 1407,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 1416,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 1425,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 1432,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_10.log",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1439,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1447,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1453,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1458,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_11.dat",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1463,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1470,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1477,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1484,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_12.zip",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1491,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1497,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1502,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1507,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_13.log",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 20,
+      "extents": [
+        {
+          "count": 5,
+          "lcn": 1515,
+          "vcn": 0
+        },
+        {
+          "count": 5,
+          "lcn": 1526,
+          "vcn": 5
+        },
+        {
+          "count": 5,
+          "lcn": 1533,
+          "vcn": 10
+        },
+        {
+          "count": 5,
+          "lcn": 1542,
+          "vcn": 15
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_14.dat",
+      "sizeBytes": 81920
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1553,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1562,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1570,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1579,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_15.zip",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 1586,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 1594,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 1601,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 1607,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_16.log",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 1613,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 1623,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 1630,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 1640,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_17.dat",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 1646,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 1650,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 1654,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 1660,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_18.zip",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1668,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1674,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1680,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1688,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_19.log",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 1179,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 1187,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 1193,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 1200,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_2.dat",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 1695,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 1705,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 1715,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 1721,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_20.dat",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1729,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1734,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1742,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1751,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_21.zip",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1756,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1763,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1770,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1778,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_22.log",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1785,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1793,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1802,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1808,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_23.dat",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 1815,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 1823,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 1828,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 1836,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_24.zip",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 1844,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 1851,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 1859,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 1866,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_25.log",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 20,
+      "extents": [
+        {
+          "count": 5,
+          "lcn": 1870,
+          "vcn": 0
+        },
+        {
+          "count": 5,
+          "lcn": 1878,
+          "vcn": 5
+        },
+        {
+          "count": 5,
+          "lcn": 1888,
+          "vcn": 10
+        },
+        {
+          "count": 5,
+          "lcn": 1895,
+          "vcn": 15
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_26.dat",
+      "sizeBytes": 81920
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 1906,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 1914,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 1920,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 1927,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_27.zip",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 1936,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 1943,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 1949,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 1953,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_28.log",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 1961,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 1967,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 1976,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 1984,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_29.dat",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 1207,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 1215,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 1221,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 1227,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_3.zip",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 1992,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2000,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2009,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2018,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_30.zip",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2026,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2034,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2042,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2052,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_31.log",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2059,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2065,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2073,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2082,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_32.dat",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2091,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2098,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2103,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2107,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_33.zip",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2111,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2118,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2126,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2136,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_34.log",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2146,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2154,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2160,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2168,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_35.dat",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2176,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2184,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2190,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2198,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_36.zip",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2205,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2210,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2218,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2223,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_37.log",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2230,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2237,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2246,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2252,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_38.dat",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2259,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2267,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2272,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2277,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_39.zip",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1233,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1242,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1251,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1260,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_4.log",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2284,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2292,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2299,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2306,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_40.log",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2312,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2316,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2323,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2327,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_41.dat",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2335,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2341,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2350,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2357,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_42.zip",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2365,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2371,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2379,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2384,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_43.log",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2391,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2397,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2405,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2413,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_44.dat",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2419,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2427,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2431,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2435,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_45.zip",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2441,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2449,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2455,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2462,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_46.log",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2467,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2471,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2475,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2481,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_47.dat",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2487,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2496,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2502,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2507,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_48.zip",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2514,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2523,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2530,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2539,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_49.log",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 1269,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 1278,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 1287,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 1293,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_5.dat",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2546,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2554,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2559,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2563,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_50.dat",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 8,
+      "extents": [
+        {
+          "count": 2,
+          "lcn": 2569,
+          "vcn": 0
+        },
+        {
+          "count": 2,
+          "lcn": 2573,
+          "vcn": 2
+        },
+        {
+          "count": 2,
+          "lcn": 2580,
+          "vcn": 4
+        },
+        {
+          "count": 2,
+          "lcn": 2585,
+          "vcn": 6
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_51.zip",
+      "sizeBytes": 32768
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2593,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2600,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2605,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2612,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_52.log",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2619,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2626,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2633,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2643,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_53.dat",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2652,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2658,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2664,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2671,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_54.zip",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 20,
+      "extents": [
+        {
+          "count": 5,
+          "lcn": 2679,
+          "vcn": 0
+        },
+        {
+          "count": 5,
+          "lcn": 2689,
+          "vcn": 5
+        },
+        {
+          "count": 5,
+          "lcn": 2699,
+          "vcn": 10
+        },
+        {
+          "count": 5,
+          "lcn": 2710,
+          "vcn": 15
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_55.log",
+      "sizeBytes": 81920
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2721,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2731,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2737,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2744,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_56.dat",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2751,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2760,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2767,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2777,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_57.zip",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 16,
+      "extents": [
+        {
+          "count": 4,
+          "lcn": 2787,
+          "vcn": 0
+        },
+        {
+          "count": 4,
+          "lcn": 2795,
+          "vcn": 4
+        },
+        {
+          "count": 4,
+          "lcn": 2801,
+          "vcn": 8
+        },
+        {
+          "count": 4,
+          "lcn": 2808,
+          "vcn": 12
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_58.log",
+      "sizeBytes": 65536
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 2814,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 2822,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 2831,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 2836,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_59.dat",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1299,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1307,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1314,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1319,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_6.zip",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1327,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1332,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1338,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1346,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_7.log",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1355,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1361,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1368,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1376,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_8.dat",
+      "sizeBytes": 49152
+    },
+    {
+      "allocatedClusters": 12,
+      "extents": [
+        {
+          "count": 3,
+          "lcn": 1381,
+          "vcn": 0
+        },
+        {
+          "count": 3,
+          "lcn": 1387,
+          "vcn": 3
+        },
+        {
+          "count": 3,
+          "lcn": 1393,
+          "vcn": 6
+        },
+        {
+          "count": 3,
+          "lcn": 1398,
+          "vcn": 9
+        }
+      ],
+      "fragmentCount": 4,
+      "key": "users\\data\\file_9.zip",
+      "sizeBytes": 49152
+    }
+  ],
+  "label": "emulator",
+  "mft": {
+    "fragmentCount": 1,
+    "freeZoneClusters": 768,
+    "inUseRecords": 400,
+    "mftStartLcn": 16,
+    "totalRecords": 1024,
+    "totalZoneClusters": 1024,
+    "zoneEndLcn": 1040,
+    "zoneStartLcn": 16
+  },
+  "moveCallCount": 180,
+  "moves": [],
+  "scenarioId": "SC-10",
+  "skips": [],
+  "summary": {
+    "fileFragmentationPct": 89552,
+    "fragmentedFiles": 60,
+    "freeClusters": 7100,
+    "largestFreeRunClusters": 4092,
+    "residentFiles": 0,
+    "totalClusters": 8192,
+    "totalFiles": 67,
+    "unmovableFiles": 22,
+    "usedClusters": 1092,
+    "volumeFragmentationPct": 68864
+  },
+  "traceFormatVersion": 1
+}

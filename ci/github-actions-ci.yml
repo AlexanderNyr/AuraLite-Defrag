@@ -20,6 +20,32 @@ jobs:
         run: |
           make cli
           make test
+      - name: SBOM freshness (P9-T08)
+        run: make sbom
+      - name: Licence audit negative tests (P9-T08)
+        run: make audit-negative
+      - name: Performance budgets and regression gate (P9-T04)
+        run: make perf && make perf-gate
+      - name: Documentation audit (P9-T07)
+        run: make docs-check
+      - name: Documentation audit negative tests (P9-T07)
+        run: make docs-negative
+      - name: Crash/power-loss campaign (P9-T03)
+        run: make crash-campaign
+      - name: USN parser suite (P9-T01)
+        run: make usn
+      - name: Exclusions suite (P8-T02)
+        run: make exclusions
+      - name: Reporting suite (P7-T05/T06/T08)
+        run: make reporting
+      - name: Reporting budgets, release build (P7-T05/T06)
+        run: make bench-reported
+      - name: Chart data model suite (P7-T01 / PT-07)
+        run: make charts
+      - name: Differential oracle suite (P2-T06 / DT-01..DT-06)
+        run: make differential
+      - name: Golden-trace corpus verification (R-064)
+        run: make golden-verify
       - name: CLI smoke checks (SC-01 & SC-14 SSD refusal)
         run: |
           ./build_linux/auralite-cli analyze --sim tests/scenarios/SC-01.json

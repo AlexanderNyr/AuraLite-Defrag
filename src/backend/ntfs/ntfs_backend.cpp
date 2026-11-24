@@ -7,6 +7,11 @@
 #include <algorithm>
 #include <cstring>
 #endif
+#include <string_view>
+
+// Deliberately outside the _WIN32 guard: the record walk below is shared with the
+// Linux test suite and the P9-T01 fuzzer, which is the whole point of extracting it.
+#include "backend/usn/usn_parser.hpp"
 
 namespace auralite {
 
@@ -386,27 +391,30 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
         }
         if (bytesRet < sizeof(USN)) break;
 
-        med.StartFileReferenceNumber = *reinterpret_cast<const DWORDLONG*>(buf.data());
-        DWORD offset = sizeof(USN);
-        while (offset + sizeof(USN_RECORD_V2) <= bytesRet && entries.size() < maxFiles) {
-            const auto* rec = reinterpret_cast<const USN_RECORD_V2*>(buf.data() + offset);
-            if (rec->RecordLength == 0 || offset + rec->RecordLength > bytesRet) break;
-            offset += rec->RecordLength;
+        // The buffer is walked by the shared, fuzzed parser instead of by inline
+        // pointer arithmetic. The data comes from the OS, but a corrupt or
+        // hostile volume can still make its embedded lengths lie, and this is the
+        // component that has been exercised with a million malformed inputs.
+        const std::string_view raw(reinterpret_cast<const char*>(buf.data()), bytesRet);
+        auto parsed = ParseUsnBuffer(raw, maxFiles > entries.size() ? maxFiles - entries.size() : 0);
+        if (!parsed.Ok()) {
+            return Result<std::vector<FileEntry>>::Failure(parsed.Error());
+        }
+        med.StartFileReferenceNumber = parsed.Value().nextStartFileReferenceNumber;
 
-            if (rec->MajorVersion != 2) continue; // Bounds-checked V2 handling
-            if (rec->FileNameOffset + rec->FileNameLength > rec->RecordLength) continue;
+        for (const auto& rec : parsed.Value().records) {
+            if (entries.size() >= maxFiles) break;
 
             FileEntry fe{};
-            fe.id = static_cast<FileId>(rec->FileReferenceNumber & 0x0000FFFFFFFFFFFFULL);
-            const auto* namePtr = reinterpret_cast<const wchar_t*>(reinterpret_cast<const BYTE*>(rec) + rec->FileNameOffset);
-            const std::wstring wName(namePtr, rec->FileNameLength / sizeof(wchar_t));
-            fe.name = Win32Platform::WideToUtf8(wName);
+            fe.id = static_cast<FileId>(rec.fileReferenceNumber & 0x0000FFFFFFFFFFFFULL);
+            fe.name = rec.name;
+            if (fe.name.empty()) continue;
 
-            fe.flags.isDirectory = (rec->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-            fe.flags.compressed = (rec->FileAttributes & FILE_ATTRIBUTE_COMPRESSED) != 0;
-            fe.flags.sparse = (rec->FileAttributes & FILE_ATTRIBUTE_SPARSE_FILE) != 0;
-            fe.flags.encrypted = (rec->FileAttributes & FILE_ATTRIBUTE_ENCRYPTED) != 0;
-            fe.flags.reparsePoint = (rec->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+            fe.flags.isDirectory = (rec.fileAttributes & kFileAttributeDirectory) != 0;
+            fe.flags.compressed = (rec.fileAttributes & kFileAttributeCompressed) != 0;
+            fe.flags.sparse = (rec.fileAttributes & kFileAttributeSparseFile) != 0;
+            fe.flags.encrypted = (rec.fileAttributes & kFileAttributeEncrypted) != 0;
+            fe.flags.reparsePoint = (rec.fileAttributes & kFileAttributeReparsePoint) != 0;
             fe.flags.isMetadata = (!fe.name.empty() && fe.name[0] == '$');
 
             if (!fe.flags.isDirectory) {
