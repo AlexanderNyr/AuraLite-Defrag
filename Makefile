@@ -10,6 +10,7 @@ CORE_SRCS := \
 	src/core/logger.cpp \
 	src/core/config.cpp \
 	src/core/exclusions.cpp \
+	src/core/path_tree.cpp \
 	src/engine/policy_gate.cpp \
 	src/engine/journal.cpp \
 	src/engine/planner.cpp \

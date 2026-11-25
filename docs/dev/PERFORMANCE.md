@@ -168,6 +168,32 @@ Memory was the one remaining item measurable here, and it is now measured:
 `VmHWM`, the process high-water mark, so it includes the file set the analysis
 builds rather than only the grid.
 
+### 5. Analysis spent a syscall per file on naming it, and a seek per file on measuring it
+
+The 160k-file analysis on the reference HDD ran at 74 files/s — 36 minutes. Two
+separate costs were hiding in one loop.
+
+**Paths.** Every file asked the filesystem for its own path with
+`GetFinalPathNameByHandleW`, on top of the open that was already made for the
+extents. The parent reference is already in the USN record the loop is walking,
+so `PathComposer` (`src/core/path_tree.hpp`) builds the whole tree in memory and
+resolves every path once, after the walk. Measured cost of composing 160,000
+paths: **252 ms total, 0.0016 ms per path**. It also names files that could
+never be opened, which the handle-based call could not.
+
+**Layout.** `OpenFileById` plus `FSCTL_GET_RETRIEVAL_POINTERS` per file is a
+random read into the MFT and into the file's own record. At 14 ms per file that
+is seek time, not CPU time: a spinning disk with one outstanding request cannot
+reorder anything. `RealNtfsBackend::ResolveLayouts` runs the measurement half on
+a pool of workers, each with its own volume handle (never the shared cached one,
+which a move or a remount invalidates underneath it). Default is
+`min(8, hardware_concurrency())`; `AURALITE_SCAN_WORKERS=1` restores the old
+sequential behaviour for a measurement, and any value from 1 to 64 is honoured.
+
+The census had to survive the split: an item a worker never got to is marked
+locked, never left at zero size, because a zero-size file counts as `empty` and
+`empty` is what produced the original "0% fragmented" report.
+
 ## Running it
 
 ```bash

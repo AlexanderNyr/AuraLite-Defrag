@@ -5,6 +5,7 @@
 #include "interfaces/i_volume_provider.hpp"
 #include "platform/win32_platform.hpp"
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -51,11 +52,25 @@ private:
     // Counted so a volume whose extents could not be read is reported as such
     // instead of as "0 fragmented files".
     mutable std::uint64_t extentReadFailures_{0};
+    // NoteProbe/openFailures_ are written from the layout workers; the probe log
+    // is a plain vector and would otherwise be corrupted by concurrent pushes.
+    mutable std::mutex probeMutex_;
     // protectClusters applies FSCTL_MARK_HANDLE/MARK_HANDLE_PROTECT_CLUSTERS. Only
     // a handle that is about to be moved needs it: applying it during read-only
     // analysis is an unrequested side effect on every file (P9-T02 F-03).
+    // volOverride lets a worker resolve files through its own volume handle
+    // instead of the shared cache, so a thread pool never touches the cached
+    // handle that another thread may be invalidating.
     UniqueHandle OpenFileByReference(FileId fileId, DWORD desiredAccess,
-                                     bool protectClusters = false) const;
+                                     bool protectClusters = false,
+                                     HANDLE volOverride = nullptr) const;
+    // Measures one file (size + extents). Split out of the enumeration loop so it
+    // can run on several threads; it only writes to the FileEntry it is given.
+    void ResolveFileLayout(FileEntry& fe, HANDLE hVol,
+                           std::atomic<std::uint64_t>& failures) const;
+    // Second phase of Enumerate: layouts for every non-directory file, in
+    // parallel. See the definition for why.
+    void ResolveLayouts(std::vector<FileEntry>& files);
     // Full 64-bit reference (record index + sequence) as it came out of the USN
     // record. FileId only keeps the 48-bit index, and OpenFileById matches the
     // pair, so the index alone is not enough.

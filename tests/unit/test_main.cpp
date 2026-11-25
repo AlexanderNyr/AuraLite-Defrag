@@ -4,6 +4,7 @@
 #include "core/config.hpp"
 #include "core/error_catalog.hpp"
 #include "core/json.hpp"
+#include "core/path_tree.hpp"
 #include "core/logger.hpp"
 #include "core/strings.hpp"
 #include "engine/journal.hpp"
@@ -902,6 +903,71 @@ void TestExtentCensusClassification() {
     CHECK(h.resident == 1);
     CHECK(h.unreadable == 0);
     CHECK(!h.Blind());
+    CHECK(!h.ReadFailed());
+
+    // Locked-only: the percentages are partial (Blind), but the read path is fine,
+    // so the operator must not be told that files "could not be read" twice.
+    std::vector<FileEntry> lockedOnly(1);
+    lockedOnly[0].id = 300;
+    lockedOnly[0].sizeBytes = 4096;
+    lockedOnly[0].flags.isLocked = true;
+    const auto lk = StatisticsEngine::Census(lockedOnly);
+    CHECK(lk.locked == 1);
+    CHECK(lk.unreadable == 0);
+    CHECK(lk.Blind());
+    CHECK(!lk.ReadFailed());
+}
+
+
+// Path composition from USN parent references.
+//
+// The backend asked the filesystem for every path with GetFinalPathNameByHandleW:
+// ~14 ms per file on a real HDD, 160,129 files in ~36 minutes. The parent chain is
+// already in the USN records, so composing the path in memory removes the call -
+// and it also names files that could never be opened.
+void TestPathCompositionFromUsn() {
+    PathComposer pc;
+    pc.AddDirectory(PathComposer::kRootDirectoryId, PathComposer::kRootDirectoryId, ".");
+    pc.AddDirectory(20, PathComposer::kRootDirectoryId, "Users");
+    pc.AddDirectory(21, 20, "Data");
+    pc.AddFile(30, 21, "a.bin");
+    pc.AddFile(31, PathComposer::kRootDirectoryId, "top.txt");
+
+    CHECK(pc.PathOf(30, "D:\\") == "D:\\Users\\Data\\a.bin");
+    CHECK(pc.PathOf(31, "D:\\") == "D:\\top.txt");
+    CHECK(pc.PathOf(21, "D:\\") == "D:\\Users\\Data");
+    CHECK(pc.PathOf(PathComposer::kRootDirectoryId, "D:\\") == "D:\\");
+    CHECK(pc.PathOf(31, "D:") == "D:\\top.txt");
+
+    // An ancestor that was never seen yields no path: a half-built path would
+    // silently match the wrong exclusion rules.
+    PathComposer orphan;
+    orphan.AddDirectory(PathComposer::kRootDirectoryId, PathComposer::kRootDirectoryId, ".");
+    orphan.AddFile(40, 99, "lost.bin");
+    CHECK(orphan.PathOf(40, "D:\\").empty());
+
+    // A cycle cannot hang the walk.
+    PathComposer cyclic;
+    cyclic.AddDirectory(PathComposer::kRootDirectoryId, PathComposer::kRootDirectoryId, ".");
+    cyclic.AddDirectory(50, 51, "x");
+    cyclic.AddDirectory(51, 50, "y");
+    cyclic.AddFile(52, 50, "loop.bin");
+    CHECK(cyclic.PathOf(52, "D:\\").empty());
+
+    // A deep but valid chain still resolves.
+    PathComposer deep;
+    deep.AddDirectory(PathComposer::kRootDirectoryId, PathComposer::kRootDirectoryId, ".");
+    FileId parent = PathComposer::kRootDirectoryId;
+    for (int i = 0; i < 60; ++i) {
+        const FileId id = static_cast<FileId>(1000 + i);
+        deep.AddDirectory(id, parent, "d");
+        parent = id;
+    }
+    deep.AddFile(2000, parent, "leaf.bin");
+    const std::string leaf = deep.PathOf(2000, "C:\\");
+    CHECK(leaf.rfind("C:\\d\\d\\", 0) == 0);
+    CHECK(leaf.size() > 130);
+    CHECK(leaf.substr(leaf.size() - 8) == "leaf.bin");
 }
 
 } // namespace
@@ -921,6 +987,7 @@ int main() {
     RUN_TEST(TestPathScopeAndTargetConfinement);
     RUN_TEST(TestScanProgressReporting);
     RUN_TEST(TestExtentCensusClassification);
+    RUN_TEST(TestPathCompositionFromUsn);
     RUN_TEST(TestCliAndSchedulerSsdPolicy);
 
     std::cout << "\nSummary: " << (gTestsRun - gTestsFailed) << "/" << gTestsRun << " passed.\n";

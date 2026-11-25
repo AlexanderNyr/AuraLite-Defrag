@@ -550,11 +550,16 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
                     << "files from its report, which is why its figure can read 0% here.\n";
             }
         }
-        if (census.Blind() && !reportSnap.isSimulation) {
+        if (census.ReadFailed() && !reportSnap.isSimulation) {
             // The same failure mode that produced "0% fragmented": the layout could
             // not be read, so the figures above cannot be trusted. Say why, here,
             // instead of leaving the reason inside the backend.
-            err << "Extent census: " << (census.locked + census.unreadable)
+            //
+            // Only unreadable extents are reported. Locked files are an expected
+            // property of a live volume - pagefiles, registry hives, running
+            // executables - and the census line already prints "locked=12". Naming
+            // them again here as "could not be read" reads like a second fault.
+            err << "Extent census: " << census.unreadable
                 << " file(s) could not be read, so the fragmentation figures above\n"
                 << "do not cover them. Probe trace:\n";
             for (const auto& step : volPtr->Evidence().probeLog) err << "  - " << step << "\n";

@@ -44,6 +44,11 @@ struct ExtentCensus {
     // True when part of the volume was not measured, so the percentages are partial.
     bool Blind() const noexcept { return unreadable > 0 || locked > 0; }
 
+    // True when the read path itself failed, as opposed to files that are simply
+    // held open. Locked files are normal on a live volume and are already named in
+    // Text() as "locked=N"; only unreadable extents mean the layout is unknown.
+    bool ReadFailed() const noexcept { return unreadable > 0; }
+
     std::string Text() const;
 };
 

@@ -1,11 +1,15 @@
 #include "backend/ntfs/ntfs_backend.hpp"
 #include "core/error_catalog.hpp"
+#include "core/path_tree.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
 #include <winioctl.h>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
+#include <cstdlib>
+#include <thread>
 #endif
 #include <string_view>
 
@@ -112,6 +116,8 @@ UniqueHandle RealNtfsBackend::OpenVolumeForFsctl() const {
 
 void RealNtfsBackend::NoteOpenFailure(const std::string& text) const {
     // Bounded: a volume where nothing opens would otherwise emit 144k lines.
+    // Called from the layout workers, so the counter and the probe log are guarded.
+    std::lock_guard<std::mutex> lock(probeMutex_);
     if (openFailures_ <= 3) mediaDetector_.NoteProbe(text);
     ++openFailures_;
 }
@@ -130,8 +136,9 @@ void RealNtfsBackend::InvalidateFsctlVolumeHandle() const {
 }
 
 UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAccess,
-                                                 bool protectClusters) const {
-    HANDLE hVol = FsctlVolumeHandle();
+                                                 bool protectClusters, HANDLE volOverride) const {
+    const bool ownHandle = (volOverride == nullptr);
+    HANDLE hVol = ownHandle ? FsctlVolumeHandle() : volOverride;
     if (hVol == INVALID_HANDLE_VALUE || hVol == nullptr) {
         NoteOpenFailure("OpenFileById volume handle failed err=" +
                         std::to_string(::GetLastError()));
@@ -175,7 +182,7 @@ UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAc
             return UniqueHandle(hFile);
         }
         lastErr = ::GetLastError();
-        if (lastErr == ERROR_INVALID_HANDLE) {
+        if (lastErr == ERROR_INVALID_HANDLE && ownHandle) {
             // The volume was remounted or the cached handle went stale: reopen once
             // so a long operation survives it instead of failing every remaining file.
             InvalidateFsctlVolumeHandle();
@@ -457,6 +464,128 @@ void RealNtfsBackend::SetScanProgressCallback(std::function<void(std::uint64_t)>
     scanProgressCb_ = std::move(callback);
 }
 
+void RealNtfsBackend::ResolveFileLayout(FileEntry& fe, HANDLE hVol,
+                                       std::atomic<std::uint64_t>& failures) const {
+    // FILE_READ_DATA, not FILE_READ_ATTRIBUTES: FSCTL_GET_RETRIEVAL_POINTERS
+    // is issued on this handle and refuses to run without it.
+    UniqueHandle hf = OpenFileByReference(fe.id, FILE_READ_ATTRIBUTES | FILE_READ_DATA,
+                                         /*protectClusters=*/false, hVol);
+    if (!hf.Valid()) {
+        fe.flags.isLocked = true;
+        return;
+    }
+    LARGE_INTEGER fsize{};
+    if (::GetFileSizeEx(hf.Get(), &fsize)) {
+        fe.sizeBytes = static_cast<std::uint64_t>(fsize.QuadPart);
+    }
+    auto extRes = ReadRetrievalPointers(hf.Get());
+    if (extRes) {
+        fe.extents = std::move(extRes.Value());
+        if (fe.extents.empty()) {
+            fe.flags.resident = true;
+            fe.fragmentCount = 0;
+        } else {
+            fe.fragmentCount = static_cast<std::uint32_t>(fe.extents.size());
+            for (const auto& e : fe.extents) fe.allocatedClusters += e.clusterCount;
+        }
+        return;
+    }
+    // The extent read failed. Leaving fragmentCount at 0 made the file
+    // indistinguishable from a contiguous one, so a volume of 160k unreadable
+    // files reported "0 fragmented". Count it as unknown and let the caller
+    // decide; never as "not fragmented".
+    fe.flags.isLocked = true;
+    const std::uint64_t n = failures.fetch_add(1) + 1;
+    if (n <= 3) {
+        // Explicit std::string on every piece: "const char* + std::string_view"
+        // is not a valid operator+ in C++20, and ErrorCodeName returns a
+        // string_view. MSVC rejects it at /permissive- (C2676).
+        std::lock_guard<std::mutex> lock(probeMutex_);
+        mediaDetector_.NoteProbe(std::string("ExtentsFailed file=") + std::string(fe.name) +
+                                 " err=" + std::to_string(extRes.Error().win32Error) +
+                                 " code=" + std::string(ErrorCodeName(extRes.Error().code)));
+    }
+}
+
+void RealNtfsBackend::ResolveLayouts(std::vector<FileEntry>& files) {
+    std::vector<std::size_t> todo;
+    todo.reserve(files.size());
+    for (std::size_t i = 0; i < files.size(); ++i) {
+        if (!files[i].flags.isDirectory) todo.push_back(i);
+    }
+    if (todo.empty()) return;
+
+    // Why a thread pool and not a faster syscall
+    // ------------------------------------------
+    // This loop is one OpenFileById plus one FSCTL_GET_RETRIEVAL_POINTERS per
+    // file - a random read into the MFT and into each file's record. On the
+    // reference volume that is ~14 ms per file (70/s, ~38 minutes for 160k
+    // files), which is the seek time of the disk, not CPU work: a single
+    // outstanding request leaves a HDD nothing to reorder. Several in flight let
+    // the volume stack and the drive batch seeks by LBA.
+    //
+    // Each worker opens its own volume handle. Sharing the cached one would race
+    // with InvalidateFsctlVolumeHandle() and with FSCTL_MOVE_FILE on the same
+    // handle during a move.
+    const std::size_t total = todo.size();
+    unsigned workers = std::thread::hardware_concurrency();
+    if (workers == 0) workers = 1;
+    workers = std::min<unsigned>(workers, 8U);
+    if (const char* env = std::getenv("AURALITE_SCAN_WORKERS")) {
+        const int v = std::atoi(env);
+        if (v > 0) workers = static_cast<unsigned>(std::min(v, 64));
+    }
+    workers = static_cast<unsigned>(std::min<std::size_t>(workers, total));
+
+    std::vector<char> resolved(total, 0);
+    std::atomic<std::size_t> next{0};
+    std::atomic<std::uint64_t> failures{0};
+    std::atomic<std::uint64_t> finished{0};
+    const std::function<void(std::uint64_t)>& cb = scanProgressCb_;
+    // The sink is written from every worker; serialise the calls rather than
+    // assume the callback is thread-safe.
+    std::mutex cbMutex;
+    auto report = [&](std::uint64_t n) {
+        std::lock_guard<std::mutex> lock(cbMutex);
+        cb(n);
+    };
+
+    auto work = [&]() {
+        UniqueHandle hVol = OpenVolumeForFsctl();
+        if (!hVol.Valid()) return; // the sweep below marks everything locked
+        for (;;) {
+            const std::size_t k = next.fetch_add(1, std::memory_order_relaxed);
+            if (k >= total) break;
+            ResolveFileLayout(files[todo[k]], hVol.Get(), failures);
+            resolved[k] = 1;
+            const std::uint64_t n = finished.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (cb && (n % 512U) == 0) report(n);
+        }
+    };
+
+    if (workers <= 1) {
+        work();
+    } else {
+        std::vector<std::thread> pool;
+        pool.reserve(workers);
+        for (unsigned i = 0; i < workers; ++i) pool.emplace_back(work);
+        for (auto& t : pool) t.join();
+    }
+
+    // A worker that could not open its volume handle leaves items behind. They
+    // must not stay at fragmentCount 0 and sizeBytes 0 - that reads as "empty",
+    // the exact misreport this census exists to prevent.
+    for (std::size_t k = 0; k < total; ++k) {
+        if (!resolved[k]) {
+            files[todo[k]].flags.isLocked = true;
+            failures.fetch_add(1);
+        }
+    }
+
+    extentReadFailures_ = failures.load();
+    if (cb) report(files.size());
+}
+
 Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles) {
     UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES | FILE_READ_DATA);
     if (!hVol.Valid()) {
@@ -470,6 +599,7 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
 
     std::vector<BYTE> buf(256U * 1024U);
     std::vector<FileEntry> entries;
+    PathComposer composer;
     pathCache_.clear();
     flagsCache_.clear();
 
@@ -515,64 +645,42 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
             if (!fe.flags.isDirectory) {
                 // FILE_READ_DATA, not FILE_READ_ATTRIBUTES: FSCTL_GET_RETRIEVAL_POINTERS
                 // is issued on this handle and refuses to run without it.
-                UniqueHandle hf = OpenFileByReference(fe.id, FILE_READ_ATTRIBUTES | FILE_READ_DATA);
-                if (hf.Valid()) {
-                    LARGE_INTEGER fsize{};
-                    if (::GetFileSizeEx(hf.Get(), &fsize)) {
-                        fe.sizeBytes = static_cast<std::uint64_t>(fsize.QuadPart);
-                    }
-                    wchar_t pathBuf[4096]{};
-                    DWORD pLen = ::GetFinalPathNameByHandleW(hf.Get(), pathBuf, 4096, FILE_NAME_NORMALIZED);
-                    if (pLen > 0 && pLen < 4096) {
-                        fe.path = Win32Platform::WideToUtf8(std::wstring_view(pathBuf, pLen));
-                    } else {
-                        fe.path = "\\" + fe.name;
-                    }
-                    auto extRes = ReadRetrievalPointers(hf.Get());
-                    if (extRes) {
-                        fe.extents = std::move(extRes.Value());
-                        if (fe.extents.empty()) {
-                            fe.flags.resident = true;
-                            fe.fragmentCount = 0;
-                        } else {
-                            fe.fragmentCount = static_cast<std::uint32_t>(fe.extents.size());
-                            for (const auto& e : fe.extents) fe.allocatedClusters += e.clusterCount;
-                        }
-                    } else {
-                        // The extent read failed. Leaving fragmentCount at 0 made
-                        // the file indistinguishable from a contiguous one, so a
-                        // volume of 160k unreadable files reported "0 fragmented".
-                        // Count it as unknown and let the caller decide; never as
-                        // "not fragmented".
-                        fe.flags.isLocked = true;
-                        ++extentReadFailures_;
-                        if (extentReadFailures_ <= 3) {
-                            // Explicit std::string on every piece: "const char* + std::string_view"
-                            // is not a valid operator+ in C++20, and ErrorCodeName returns a
-                            // string_view. MSVC rejects it at /permissive- (C2676).
-                            mediaDetector_.NoteProbe(std::string("ExtentsFailed file=") + std::string(fe.name) +
-                                                     " err=" + std::to_string(extRes.Error().win32Error) +
-                                                     " code=" + std::string(ErrorCodeName(extRes.Error().code)));
-                        }
-                    }
-                } else {
-                    fe.flags.isLocked = true;
-                    fe.path = "\\" + fe.name;
-                }
+                // The path is composed from the USN parent chain after enumeration
+                // (PathComposer). GetFinalPathNameByHandleW cost ~14 ms per file on a
+                // real HDD - 36 minutes for 160k files - and produced nothing at all
+                // for the files that could not be opened.
+                composer.AddFile(fe.id,
+                                 static_cast<FileId>(rec.parentFileReferenceNumber &
+                                                     0x0000FFFFFFFFFFFFULL),
+                                 fe.name);
             } else {
-                fe.path = "\\" + fe.name;
+                composer.AddDirectory(fe.id,
+                                      static_cast<FileId>(rec.parentFileReferenceNumber &
+                                                          0x0000FFFFFFFFFFFFULL),
+                                      fe.name);
             }
 
-            pathCache_[fe.id] = fe.path;
-            flagsCache_[fe.id] = fe.flags;
             entries.push_back(std::move(fe));
 
-            // Report roughly five times a second at HDD enumeration speed without
-            // crossing a module boundary for every single file.
-            if (scanProgressCb_ && (entries.size() % 2048U) == 0) {
-                scanProgressCb_(entries.size());
-            }
         }
+    }
+
+    // Phase 2: the expensive half. One open plus one ioctl per file, spread over
+    // several threads.
+    ResolveLayouts(entries);
+
+    // Phase 3: compose every path from data already in memory.
+    const std::string rootPrefix = Win32Platform::WideToUtf8(VolumeRootPath());
+    for (auto& fe : entries) {
+        std::string composed = composer.PathOf(fe.id, rootPrefix);
+        if (composed.empty()) {
+            // An ancestor that was not in the journal (deleted before it began)
+            // leaves no usable path; keep something the operator can read.
+            composed = "\\" + fe.name;
+        }
+        fe.path = std::move(composed);
+        pathCache_[fe.id] = fe.path;
+        flagsCache_[fe.id] = fe.flags;
     }
 
     if (extentReadFailures_ > 0) {
