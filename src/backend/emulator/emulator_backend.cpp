@@ -246,7 +246,9 @@ Result<std::vector<FileEntry>> EmulatorBackend::Enumerate(std::uint64_t maxFiles
     out.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
         out.push_back(files_[i]);
+        if (scanProgressCb_ && ((i + 1) % 2048U) == 0) scanProgressCb_(i + 1);
     }
+    if (scanProgressCb_ && n > 0 && (n % 2048U) != 0) scanProgressCb_(n);
     return Result<std::vector<FileEntry>>::Success(std::move(out));
 }
 

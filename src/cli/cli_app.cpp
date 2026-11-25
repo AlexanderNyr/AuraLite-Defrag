@@ -18,6 +18,7 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -84,11 +85,21 @@ namespace {
 
 class ConsoleProgressSink final : public IProgressSink {
 public:
-    explicit ConsoleProgressSink(std::ostream& out, bool quiet)
-        : out_(out), quiet_(quiet) {}
+    ConsoleProgressSink(std::ostream& out, std::ostream& err, bool quiet)
+        : out_(out), err_(err), quiet_(quiet) {}
 
     void OnSnapshot(const ProgressSnapshot& snapshot) override {
         lastSnapshot_ = snapshot;
+
+        // Analysis has no known total: the number of files is what enumeration
+        // discovers. Show a counter and a rate instead of a percentage that would
+        // be a guess, on stderr, so stdout stays the report.
+        if (!quiet_ && snapshot.state == OperationState::Analyzing) {
+            EmitScanProgress(snapshot.completedSteps);
+            return;
+        }
+        CloseScanLine();
+
         if (!quiet_ && snapshot.state == OperationState::Defragmenting) {
             out_ << "[" << FormatPercent(snapshot.percentComplete) << "] "
                  << snapshot.completedSteps << "/" << snapshot.totalSteps
@@ -104,10 +115,49 @@ public:
     const std::vector<LogEvent>& Events() const noexcept { return events_; }
 
 private:
+    void EmitScanProgress(std::uint64_t scanned) {
+        if (scanned == 0) return; // the announced start of a phase is not progress
+        const auto now = std::chrono::steady_clock::now();
+        const bool firstLine = !scanLineOpen_;
+        if (!firstLine) {
+            const auto sinceMs =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - lastScanPrint_).count();
+            // Redraw at most every 100 ms and never for the same count twice.
+            if (sinceMs < 100 || scanned == lastScanCount_) return;
+        }
+        const double seconds = firstLine
+                                   ? 0.0
+                                   : std::chrono::duration<double>(now - scanStart_).count();
+        const double rate = seconds > 0.0 ? static_cast<double>(scanned) / seconds : 0.0;
+
+        err_ << "\r  analyzing: " << FormatInteger(scanned) << " files";
+        if (rate >= 1.0) err_ << " (" << FormatInteger(static_cast<std::uint64_t>(rate)) << "/s)";
+        err_ << "        ";
+        err_.flush();
+
+        if (firstLine) scanStart_ = now;
+        scanLineOpen_ = true;
+        lastScanPrint_ = now;
+        lastScanCount_ = scanned;
+    }
+
+    void CloseScanLine() {
+        if (scanLineOpen_) {
+            err_ << "\n";
+            err_.flush();
+            scanLineOpen_ = false;
+        }
+    }
+
     std::ostream& out_;
+    std::ostream& err_;
     bool quiet_;
     ProgressSnapshot lastSnapshot_{};
     std::vector<LogEvent> events_;
+    bool scanLineOpen_{false};
+    std::chrono::steady_clock::time_point scanStart_{};
+    std::chrono::steady_clock::time_point lastScanPrint_{};
+    std::uint64_t lastScanCount_{0};
 };
 
 class SimVolProxy final : public IVolumeProvider {
@@ -136,6 +186,9 @@ public:
     Result<MftInfo> Mft() override { return b_->Mft(); }
     Result<MftZoneInfo> Zone() override { return b_->Zone(); }
     Result<std::uint64_t> ComputeWindowChecksum(FileId id) override { return b_->ComputeWindowChecksum(id); }
+    void SetScanProgressCallback(std::function<void(std::uint64_t)> cb) override {
+        b_->SetScanProgressCallback(std::move(cb));
+    }
 
 private:
     std::shared_ptr<EmulatorBackend> b_;
@@ -373,7 +426,7 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
     planOpts.mftTier = static_cast<MftTier>(opts.mftTier);
     planOpts.mftConfirmed = opts.confirmMft;
 
-    ConsoleProgressSink sink(out, opts.format == "json");
+    ConsoleProgressSink sink(out, err, opts.format == "json");
     CancelToken token;
 
     // The journal belongs to one volume. Sharing a single file name across volumes
@@ -517,7 +570,9 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
             << "Moves completed: " << opRes.Value().stepsCompleted
             << " | Verified: " << opRes.Value().stepsVerified
             << " | Skipped: " << opRes.Value().stepsSkipped << "\n";
-        if (census.Blind()) {
+        // A simulation describes its own locks and faults on purpose; the warning
+        // exists for a real volume where a blind census means a broken read path.
+        if (census.Blind() && !reportSnap.isSimulation) {
             // The same failure mode that produced "0% fragmented": the layout could
             // not be read, so the figures above cannot be trusted. Say why, here,
             // instead of leaving the reason inside the backend.

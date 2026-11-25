@@ -126,7 +126,33 @@ Result<AnalysisSnapshot> OperationController::Analyze(IVolumeProvider& volume,
         return Result<AnalysisSnapshot>::Failure(MakeError(ErrorCode::E_INTERNAL_CANCELLED, volume.Id()));
     }
 
+    // Enumeration is the long phase on a real volume: one FSCTL per file, minutes
+    // for 160k files. Report file counts while it runs, and detach the callback
+    // afterwards so a later phase cannot write into a dead sink.
+    {
+        ProgressSnapshot p{};
+        p.mode = DefragMode::Analyze;
+        p.volumeId = volume.Id();
+        p.state = OperationState::Analyzing;
+        p.totalSteps = 0; // total unknown: the count is what enumeration discovers
+        p.completedSteps = 0;
+        p.isSimulation = volume.IsSimulation();
+        sink.OnSnapshot(p);
+
+        fs.SetScanProgressCallback([&sink, &volume](std::uint64_t scanned) {
+            ProgressSnapshot progress{};
+            progress.mode = DefragMode::Analyze;
+            progress.volumeId = volume.Id();
+            progress.state = OperationState::Analyzing;
+            progress.totalSteps = 0;
+            progress.completedSteps = scanned;
+            progress.isSimulation = volume.IsSimulation();
+            sink.OnSnapshot(progress);
+        });
+    }
+
     auto filesRes = fs.Enumerate(maxFiles);
+    fs.SetScanProgressCallback(nullptr);
     if (!filesRes) {
         restoreState(OperationState::Error);
         return Result<AnalysisSnapshot>::Failure(filesRes.Error());

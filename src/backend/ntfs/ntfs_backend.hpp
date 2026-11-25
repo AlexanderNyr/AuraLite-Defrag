@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -35,6 +36,7 @@ public:
     Result<MftInfo> Mft() override;
     Result<MftZoneInfo> Zone() override;
     Result<std::uint64_t> ComputeWindowChecksum(FileId fileId) override;
+    void SetScanProgressCallback(std::function<void(std::uint64_t)> callback) override;
 
 private:
 #ifdef _WIN32
@@ -65,6 +67,7 @@ private:
     std::unordered_map<FileId, std::string> pathCache_;
     std::unordered_map<FileId, FileFlags> flagsCache_;
     std::unordered_map<FileId, std::uint64_t> refCache_;
+    std::function<void(std::uint64_t)> scanProgressCb_;
     VolumeGeometry cachedGeom_{};
     bool hasCachedGeom_{false};
 };
@@ -95,6 +98,11 @@ public:
     Result<MftInfo> Mft() override { return b_->Mft(); }
     Result<MftZoneInfo> Zone() override { return b_->Zone(); }
     Result<std::uint64_t> ComputeWindowChecksum(FileId id) override { return b_->ComputeWindowChecksum(id); }
+    // Without this forwarder the callback is dropped by the proxy and the
+    // enumeration stays silent - exactly the failure this hook exists to remove.
+    void SetScanProgressCallback(std::function<void(std::uint64_t)> cb) override {
+        b_->SetScanProgressCallback(std::move(cb));
+    }
 
 private:
     std::shared_ptr<RealNtfsBackend> b_;

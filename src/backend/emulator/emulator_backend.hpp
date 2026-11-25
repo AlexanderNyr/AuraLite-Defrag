@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -73,6 +74,9 @@ public:
     // IFileSystemAdapter
     CapabilityBits Capabilities() const override { return config_.capabilities; }
     Result<std::vector<FileEntry>> Enumerate(std::uint64_t maxFiles) override;
+    void SetScanProgressCallback(std::function<void(std::uint64_t)> callback) override {
+        scanProgressCb_ = std::move(callback);
+    }
     Result<std::vector<Extent>> Extents(FileId fileId) override;
     Result<FileFlags> Flags(FileId fileId) override;
     MoveResult MoveExtent(FileId fileId, Vcn startVcn, Lcn targetLcn, std::uint32_t clusters) override;
@@ -112,6 +116,7 @@ private:
     MftInfo mftInfo_{};
     std::uint32_t reservedZoneLevel_{1};
     std::uint64_t moveCallCount_{0};
+    std::function<void(std::uint64_t)> scanProgressCb_;
 };
 
 // Deterministic 64-bit SplitMix64 PRNG

@@ -433,6 +433,10 @@ Result<std::vector<Extent>> RealNtfsBackend::ReadRetrievalPointers(HANDLE fileHa
     return Result<std::vector<Extent>>::Success(std::move(out));
 }
 
+void RealNtfsBackend::SetScanProgressCallback(std::function<void(std::uint64_t)> callback) {
+    scanProgressCb_ = std::move(callback);
+}
+
 Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles) {
     UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES | FILE_READ_DATA);
     if (!hVol.Valid()) {
@@ -542,6 +546,12 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
             pathCache_[fe.id] = fe.path;
             flagsCache_[fe.id] = fe.flags;
             entries.push_back(std::move(fe));
+
+            // Report roughly five times a second at HDD enumeration speed without
+            // crossing a module boundary for every single file.
+            if (scanProgressCb_ && (entries.size() % 2048U) == 0) {
+                scanProgressCb_(entries.size());
+            }
         }
     }
 

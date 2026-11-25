@@ -727,6 +727,125 @@ void TestPathScopeAndTargetConfinement() {
     }
 }
 
+
+// Progress reporting on the long phase.
+//
+// Enumerating a real volume is one ioctl per file - minutes for 160k files - and
+// until this existed `analyze` printed nothing until it had finished, so the run
+// looked hung. The hook has to survive two proxy layers to reach the sink, which
+// is where it was first dropped.
+namespace {
+
+class ScanProgressFakeFs final : public IFileSystemAdapter {
+public:
+    explicit ScanProgressFakeFs(std::vector<std::uint64_t> marks) : marks_(std::move(marks)) {}
+
+    CapabilityBits Capabilities() const override { return {}; }
+    Result<std::vector<FileEntry>> Enumerate(std::uint64_t) override {
+        for (std::uint64_t m : marks_) {
+            if (cb_) cb_(m);
+        }
+        return Result<std::vector<FileEntry>>::Success({});
+    }
+    Result<std::vector<Extent>> Extents(FileId) override { return Result<std::vector<Extent>>::Success({}); }
+    Result<FileFlags> Flags(FileId) override { return Result<FileFlags>::Success({}); }
+    MoveResult MoveExtent(FileId, Vcn, Lcn, std::uint32_t) override { return MoveResult{}; }
+    Result<MftInfo> Mft() override { return Result<MftInfo>::Success({}); }
+    Result<MftZoneInfo> Zone() override { return Result<MftZoneInfo>::Success({}); }
+    Result<std::uint64_t> ComputeWindowChecksum(FileId) override {
+        return Result<std::uint64_t>::Success(0);
+    }
+    void SetScanProgressCallback(std::function<void(std::uint64_t)> callback) override {
+        cb_ = std::move(callback);
+        ++setCount;
+    }
+
+    int setCount{0};
+
+private:
+    std::vector<std::uint64_t> marks_;
+    std::function<void(std::uint64_t)> cb_;
+};
+
+class CountingSink final : public IProgressSink {
+public:
+    void OnSnapshot(const ProgressSnapshot& p) override {
+        if (p.state == OperationState::Analyzing) analyzing.push_back(p.completedSteps);
+    }
+    void OnEvent(const LogEvent&) override {}
+    std::vector<std::uint64_t> analyzing;
+};
+
+class StubVolume final : public IVolumeProvider {
+public:
+    VolumeId Id() const override { return "X:"; }
+    Result<VolumeGeometry> Geometry() override {
+        VolumeGeometry g{};
+        g.totalClusters = 100;
+        g.freeClusters = 50;
+        return Result<VolumeGeometry>::Success(g);
+    }
+    MediaClass Media() override { return MediaClass::Spinning; }
+    MediaEvidence Evidence() override { return {}; }
+    Result<PreflightResult> Preflight(bool, double) override {
+        return Result<PreflightResult>::Success({});
+    }
+    Result<BitmapSnapshot> ReadBitmap(Lcn, ClusterCount) override {
+        return Result<BitmapSnapshot>::Success({});
+    }
+    bool IsSimulation() const noexcept override { return false; }
+};
+
+} // namespace
+
+void TestScanProgressReporting() {
+    // The controller installs a callback, forwards every count to the sink, and
+    // detaches it afterwards so a later phase cannot write into a dead sink.
+    {
+        StubVolume vol;
+        ScanProgressFakeFs fs({2048, 4096, 6000});
+        AppConfig cfg{};
+        PolicyGate policy(cfg);
+        StructuredLogger logger;
+        OperationController ctrl(policy, logger);
+        CountingSink sink;
+        CancelToken token;
+        auto res = ctrl.Analyze(vol, fs, sink, token);
+        CHECK(res.Ok());
+        CHECK(fs.setCount == 2);           // installed, then cleared
+        CHECK(sink.analyzing.size() == 4); // phase marker + 3 counts
+        CHECK(sink.analyzing[0] == 0);
+        CHECK(sink.analyzing[1] == 2048);
+        CHECK(sink.analyzing[3] == 6000);
+    }
+
+    // End to end: a 2,502-file scenario produces a progress line on stderr while
+    // stdout stays the report, and JSON mode keeps both streams machine-clean.
+    {
+        const char* argv[] = {"auralite-cli", "analyze", "--volume", "C:",
+                              "--sim", "tests/scenarios/SC-05.json"};
+        CliOptions cli{};
+        std::string perr;
+        CHECK(CliApp::ParseArgs(6, argv, cli, perr));
+        std::ostringstream outStream, errStream;
+        CHECK(CliApp::Run(cli, outStream, errStream) == 0);
+        CHECK(errStream.str().find("analyzing:") != std::string::npos);
+        CHECK(errStream.str().find("2,048") != std::string::npos);
+        CHECK(outStream.str().find("analyzing:") == std::string::npos);
+    }
+    {
+        const char* argv[] = {"auralite-cli", "analyze", "--volume", "C:",
+                              "--sim", "tests/scenarios/SC-05.json", "--format", "json"};
+        CliOptions cli{};
+        std::string perr;
+        CHECK(CliApp::ParseArgs(8, argv, cli, perr));
+        std::ostringstream outStream, errStream;
+        CHECK(CliApp::Run(cli, outStream, errStream) == 0);
+        CHECK(errStream.str().find("analyzing:") == std::string::npos);
+        CHECK(ParseJsonStrict(outStream.str()).Ok());
+    }
+}
+
 } // namespace
 
 int main() {
@@ -742,6 +861,7 @@ int main() {
     RUN_TEST(TestAll20Scenarios);
     RUN_TEST(TestCsvInjectionSafetyAndStatistics);
     RUN_TEST(TestPathScopeAndTargetConfinement);
+    RUN_TEST(TestScanProgressReporting);
     RUN_TEST(TestCliAndSchedulerSsdPolicy);
 
     std::cout << "\nSummary: " << (gTestsRun - gTestsFailed) << "/" << gTestsRun << " passed.\n";
