@@ -43,6 +43,11 @@ private:
     UniqueHandle OpenVolumeHandle(DWORD desiredAccess) const;
     // Opens the volume with the access every FSCTL in this backend needs.
     UniqueHandle OpenVolumeForFsctl() const;
+    // OpenFileById needs a volume handle. Opening it per file cost ~13 ms per file
+    // on a real HDD (74 files/s, ~36 minutes for 160k files); it is opened once and
+    // reused. Invalidated on ERROR_INVALID_HANDLE so a remounted volume recovers.
+    HANDLE FsctlVolumeHandle() const;
+    void InvalidateFsctlVolumeHandle() const;
     // Counted so a volume whose extents could not be read is reported as such
     // instead of as "0 fragmented files".
     mutable std::uint64_t extentReadFailures_{0};
@@ -68,6 +73,8 @@ private:
     std::unordered_map<FileId, FileFlags> flagsCache_;
     std::unordered_map<FileId, std::uint64_t> refCache_;
     std::function<void(std::uint64_t)> scanProgressCb_;
+    mutable UniqueHandle cachedVolHandle_;
+    mutable std::mutex volHandleMutex_;
     VolumeGeometry cachedGeom_{};
     bool hasCachedGeom_{false};
 };

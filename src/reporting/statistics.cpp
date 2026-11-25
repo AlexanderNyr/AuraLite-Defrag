@@ -1,5 +1,7 @@
 #include "reporting/statistics.hpp"
 
+#include <sstream>
+
 #include <algorithm>
 
 namespace auralite {
@@ -84,6 +86,41 @@ void StatisticsEngine::RecordThroughputSample(std::vector<ThroughputPoint>& seri
         series.erase(series.begin());
     }
     series.push_back({progress.elapsedMs, progress.throughputMBps, progress.clustersMoved, progress.etaSeconds});
+}
+
+std::string ExtentCensus::Text() const {
+    std::ostringstream os;
+    os << "1ext=" << singleExtent << " 2plus=" << multiExtent
+       << " empty=" << zeroLength << " resident=" << resident
+       << " unreadable=" << unreadable << " locked=" << locked
+       << " max=" << maxExtents;
+    return os.str();
+}
+
+ExtentCensus StatisticsEngine::Census(const std::vector<FileEntry>& files) {
+    ExtentCensus c;
+    for (const auto& f : files) {
+        if (f.flags.isDirectory) continue;
+        if (f.flags.isLocked) ++c.locked;
+        const std::uint32_t n = static_cast<std::uint32_t>(f.extents.size());
+        c.maxExtents = n > c.maxExtents ? n : c.maxExtents;
+
+        if (n >= 2) {
+            ++c.multiExtent;
+        } else if (n == 1) {
+            ++c.singleExtent;
+        } else if (f.flags.isLocked) {
+            // Already counted as locked. Its size is unknown too, so it must not be
+            // reported as a zero-length file on top of that.
+        } else if (f.sizeBytes == 0) {
+            ++c.zeroLength;
+        } else if (f.flags.resident) {
+            ++c.resident; // data lives inside the MFT record; no extents is correct
+        } else {
+            ++c.unreadable; // length without a layout, and not marked resident
+        }
+    }
+    return c;
 }
 
 } // namespace auralite

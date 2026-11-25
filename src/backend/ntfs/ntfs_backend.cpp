@@ -116,10 +116,23 @@ void RealNtfsBackend::NoteOpenFailure(const std::string& text) const {
     ++openFailures_;
 }
 
+HANDLE RealNtfsBackend::FsctlVolumeHandle() const {
+    std::lock_guard<std::mutex> lock(volHandleMutex_);
+    if (!cachedVolHandle_.Valid()) {
+        cachedVolHandle_ = OpenVolumeForFsctl();
+    }
+    return cachedVolHandle_.Get();
+}
+
+void RealNtfsBackend::InvalidateFsctlVolumeHandle() const {
+    std::lock_guard<std::mutex> lock(volHandleMutex_);
+    cachedVolHandle_.Reset();
+}
+
 UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAccess,
                                                  bool protectClusters) const {
-    UniqueHandle hVol = OpenVolumeForFsctl();
-    if (!hVol.Valid()) {
+    HANDLE hVol = FsctlVolumeHandle();
+    if (hVol == INVALID_HANDLE_VALUE || hVol == nullptr) {
         NoteOpenFailure("OpenFileById volume handle failed err=" +
                         std::to_string(::GetLastError()));
         return UniqueHandle{};
@@ -146,7 +159,7 @@ UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAc
         desc.Type = FileIdType;
         desc.FileId.QuadPart = static_cast<LONGLONG>(candidates[i]);
 
-        HANDLE hFile = ::OpenFileById(hVol.Get(), &desc, desiredAccess,
+        HANDLE hFile = ::OpenFileById(hVol, &desc, desiredAccess,
                                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                       nullptr, FILE_FLAG_BACKUP_SEMANTICS);
         if (hFile != INVALID_HANDLE_VALUE) {
@@ -162,6 +175,13 @@ UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAc
             return UniqueHandle(hFile);
         }
         lastErr = ::GetLastError();
+        if (lastErr == ERROR_INVALID_HANDLE) {
+            // The volume was remounted or the cached handle went stale: reopen once
+            // so a long operation survives it instead of failing every remaining file.
+            InvalidateFsctlVolumeHandle();
+            hVol = FsctlVolumeHandle();
+            if (hVol == INVALID_HANDLE_VALUE || hVol == nullptr) break;
+        }
     }
 
     NoteOpenFailure(std::string("OpenFileById failed id=") + std::to_string(fileId) +
@@ -622,6 +642,13 @@ Result<MftInfo> RealNtfsBackend::Mft() {
     if (extRes) {
         info.mftExtents = std::move(extRes.Value());
         info.fragmentCount = static_cast<std::uint32_t>(info.mftExtents.size());
+    } else {
+        // A report of "MFT: 0 fragments" is a claim. When the layout could not be
+        // read that claim is false, and Windows' own analysis usually reports a
+        // non-zero count for the same volume, so say which one this is.
+        mediaDetector_.NoteProbe(std::string("MftExtentsUnavailable err=") +
+                                 std::to_string(extRes.Error().win32Error) +
+                                 " code=" + std::string(ErrorCodeName(extRes.Error().code)));
     }
     return Result<MftInfo>::Success(std::move(info));
 }

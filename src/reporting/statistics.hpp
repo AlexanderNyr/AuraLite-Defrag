@@ -27,6 +27,26 @@ struct FragmentHistogram {
     std::uint64_t totalFiles{0};
 };
 
+// What the backend actually saw per file. Only two of these are problems: a
+// resident file legitimately has no extents because its data lives inside the MFT
+// record, while a file that could not be opened or whose layout could not be read
+// is a hole in the report. Conflating them produced a warning about 55,917
+// "unreadable" files on a healthy volume.
+struct ExtentCensus {
+    std::uint64_t singleExtent{0};
+    std::uint64_t multiExtent{0};
+    std::uint64_t zeroLength{0};
+    std::uint64_t resident{0};
+    std::uint64_t unreadable{0};
+    std::uint64_t locked{0};
+    std::uint32_t maxExtents{0};
+
+    // True when part of the volume was not measured, so the percentages are partial.
+    bool Blind() const noexcept { return unreadable > 0 || locked > 0; }
+
+    std::string Text() const;
+};
+
 struct TopFragmentedEntry {
     FileId id{0};
     std::string name;
@@ -59,6 +79,8 @@ public:
 
     static std::vector<TopFragmentedEntry> ComputeTopN(const AnalysisSnapshot& snapshot,
                                                        std::size_t n = 25);
+
+    static ExtentCensus Census(const std::vector<FileEntry>& files);
 
     static void RecordThroughputSample(std::vector<ThroughputPoint>& series,
                                        const ProgressSnapshot& progress,

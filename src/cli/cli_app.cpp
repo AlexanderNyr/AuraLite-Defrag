@@ -28,55 +28,6 @@
 
 namespace {
 
-// One line describing what the backend actually saw per file. On a healthy
-// volume the three groups add up to the file count and "noextent" is zero:
-// a non-empty file that Windows reports as having no extents could not have
-// its layout read, and that is the case that used to hide as "not fragmented".
-struct ExtentCensus {
-    std::size_t single{0};
-    std::size_t multi{0};
-    std::size_t empty{0};
-    std::size_t noExtent{0};
-    std::size_t locked{0};
-    std::uint32_t maxExtents{0};
-
-    bool Blind() const { return locked > 0 || noExtent > 0; }
-
-    std::string Text() const {
-        std::ostringstream os;
-        os << "1ext=" << single << " 2plus=" << multi << " empty=" << empty
-           << " noextent=" << noExtent << " locked=" << locked
-           << " max=" << maxExtents;
-        return os.str();
-    }
-};
-
-// What the backend actually saw per file. A non-empty file that reports no
-// extents could not have its layout read, and that used to hide as "not
-// fragmented"; when the census is blind the probe trace is printed with it so
-// the reason travels to the operator instead of dying inside the backend.
-ExtentCensus CensusExtents(const std::vector<auralite::FileEntry>& files) {
-    ExtentCensus c;
-    for (const auto& f : files) {
-        if (f.flags.isDirectory) continue;
-        if (f.flags.isLocked) ++c.locked;
-        const std::uint32_t n = static_cast<std::uint32_t>(f.extents.size());
-        c.maxExtents = n > c.maxExtents ? n : c.maxExtents;
-        if (n == 0) {
-            if (f.sizeBytes > 0) {
-                ++c.noExtent;
-            } else {
-                ++c.empty;
-            }
-        } else if (n == 1) {
-            ++c.single;
-        } else {
-            ++c.multi;
-        }
-    }
-    return c;
-}
-
 } // namespace
 
 namespace auralite {
@@ -540,7 +491,7 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
         if (opts.dryRun) {
             out << StringTable::Lookup("IDS_DRY_RUN_HEADER") << "\n";
         }
-        const ExtentCensus census = CensusExtents(reportSnap.files);
+        const ExtentCensus census = StatisticsEngine::Census(reportSnap.files);
         if (!opts.targetPath.empty()) {
             const bool anyMatch = std::any_of(
                 reportSnap.files.begin(), reportSnap.files.end(), [&](const auralite::FileEntry& f) {
@@ -572,11 +523,38 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
             << " | Skipped: " << opRes.Value().stepsSkipped << "\n";
         // A simulation describes its own locks and faults on purpose; the warning
         // exists for a real volume where a blind census means a broken read path.
+        // Windows' own analysis hides files larger than 64 MiB from its fragmentation
+        // figures ("Примечание. В статистику фрагментации не включаются фрагменты
+        // файлов, размер которых превышает 64 МБ"), so a volume full of large
+        // fragmented files reads 0% there and a real number here. Say which is which
+        // instead of leaving the operator to guess.
+        {
+            constexpr std::uint64_t kDefragExcludedBytes = 64ULL * 1024ULL * 1024ULL;
+            std::uint64_t bigFragmented = 0;
+            ClusterCount bigClusters = 0;
+            for (const auto& f : reportSnap.files) {
+                if (!f.flags.isDirectory && f.fragmentCount > 1 &&
+                    f.sizeBytes > kDefragExcludedBytes) {
+                    ++bigFragmented;
+                    bigClusters += f.allocatedClusters;
+                }
+            }
+            if (bigFragmented > 0) {
+                const double share =
+                    100.0 * static_cast<double>(bigClusters) /
+                    static_cast<double>(reportSnap.summary.usedClusters == 0
+                                            ? 1
+                                            : reportSnap.summary.usedClusters);
+                err << "Note: " << bigFragmented << " fragmented file(s) above 64 MiB hold "
+                    << FormatPercent(share) << " of the used space. defrag.exe excludes such\n"
+                    << "files from its report, which is why its figure can read 0% here.\n";
+            }
+        }
         if (census.Blind() && !reportSnap.isSimulation) {
             // The same failure mode that produced "0% fragmented": the layout could
             // not be read, so the figures above cannot be trusted. Say why, here,
             // instead of leaving the reason inside the backend.
-            err << "Extent census: " << (census.locked + census.noExtent)
+            err << "Extent census: " << (census.locked + census.unreadable)
                 << " file(s) could not be read, so the fragmentation figures above\n"
                 << "do not cover them. Probe trace:\n";
             for (const auto& step : volPtr->Evidence().probeLog) err << "  - " << step << "\n";

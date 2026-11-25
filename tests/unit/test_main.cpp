@@ -846,6 +846,64 @@ void TestScanProgressReporting() {
     }
 }
 
+
+// Extent census classification.
+//
+// The first version of the census counted every non-empty file without extents as
+// "could not be read", and told the operator that 55,917 files on a healthy volume
+// were unmeasured. They were resident files, whose data lives inside the MFT
+// record, and no extents is the correct answer for them.
+void TestExtentCensusClassification() {
+    std::vector<FileEntry> files;
+
+    auto add = [&files](FileId id, std::uint64_t size, std::uint32_t extents,
+                        bool resident, bool locked, bool isDir = false) {
+        FileEntry f{};
+        f.id = id;
+        f.name = "f" + std::to_string(id);
+        f.sizeBytes = size;
+        f.flags.resident = resident;
+        f.flags.isLocked = locked;
+        f.flags.isDirectory = isDir;
+        for (std::uint32_t i = 0; i < extents; ++i) {
+            f.extents.push_back({i, static_cast<Lcn>(100 + i), 1});
+        }
+        f.fragmentCount = extents;
+        files.push_back(f);
+    };
+
+    add(100, 4096, 1, false, false);   // one extent
+    add(101, 8192, 3, false, false);   // fragmented, three extents
+    add(102, 0, 0, false, false);      // zero length
+    add(103, 300, 0, true, false);     // RESIDENT: data inside the MFT record
+    add(104, 4096, 0, false, true);    // could not be opened
+    add(105, 4096, 0, false, false);   // length, no layout, not resident: unreadable
+    add(106, 4096, 1, false, false, /*isDir=*/true); // directories are not files
+
+    const auto c = StatisticsEngine::Census(files);
+    CHECK(c.singleExtent == 1);
+    CHECK(c.multiExtent == 1);
+    CHECK(c.zeroLength == 1);
+    CHECK(c.resident == 1);
+    CHECK(c.locked == 1);
+    CHECK(c.unreadable == 1);
+    CHECK(c.maxExtents == 3);
+    CHECK(c.Blind());
+    CHECK(c.Text().find("resident=1") != std::string::npos);
+
+    // A volume of resident and zero-length files only is fully measured.
+    std::vector<FileEntry> healthy;
+    FileEntry r{};
+    r.id = 200;
+    r.sizeBytes = 120;
+    r.flags.resident = true;
+    healthy.push_back(r);
+    const auto h = StatisticsEngine::Census(healthy);
+    CHECK(h.resident == 1);
+    CHECK(h.unreadable == 0);
+    CHECK(!h.Blind());
+}
+
 } // namespace
 
 int main() {
@@ -862,6 +920,7 @@ int main() {
     RUN_TEST(TestCsvInjectionSafetyAndStatistics);
     RUN_TEST(TestPathScopeAndTargetConfinement);
     RUN_TEST(TestScanProgressReporting);
+    RUN_TEST(TestExtentCensusClassification);
     RUN_TEST(TestCliAndSchedulerSsdPolicy);
 
     std::cout << "\nSummary: " << (gTestsRun - gTestsFailed) << "/" << gTestsRun << " passed.\n";
