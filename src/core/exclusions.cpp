@@ -159,6 +159,21 @@ std::string ExclusionEngine::CanonicalPath(std::string_view path) {
     return out;
 }
 
+bool ExclusionEngine::IsWithinScope(std::string_view scopePrefix, std::string_view path) noexcept {
+    if (scopePrefix.empty()) return false;
+    std::string scope = CanonicalPath(scopePrefix);
+    std::string candidate = CanonicalPath(path);
+    if (scope.empty() || candidate.size() < scope.size()) return false;
+
+    // Compare without a trailing separator on the scope: "D:\Data\" and
+    // "D:\Data" must mean the same boundary.
+    while (!scope.empty() && scope.back() == '\\') scope.pop_back();
+    if (scope.empty()) return false;              // a bare root contains everything it names
+    if (candidate.compare(0, scope.size(), scope) != 0) return false;
+    if (candidate.size() == scope.size()) return true;
+    return candidate[scope.size()] == '\\';
+}
+
 bool ExclusionEngine::GlobMatch(std::string_view pattern, std::string_view text) noexcept {
     // A leading "**\\" means "at any depth, including the root". Users write
     // "**\\*.tmp" meaning every temp file on the volume, and it would be a

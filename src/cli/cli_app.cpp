@@ -2,6 +2,7 @@
 #include "backend/emulator/emulator_backend.hpp"
 #include "backend/emulator/scenario_loader.hpp"
 #include "core/error_catalog.hpp"
+#include "core/exclusions.hpp"
 #include "core/json.hpp"
 #include "core/strings.hpp"
 #include "engine/journal.hpp"
@@ -16,6 +17,7 @@
 #include "platform/win32_platform.hpp"
 #endif
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -356,6 +358,17 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
     planOpts.largeFileThresholdBytes = cfg.largeFileThresholdBytes;
     planOpts.quickMinFragments = cfg.quickDefragMinFragments;
     planOpts.quickMinSizeBytes = cfg.quickDefragMinSizeBytes;
+    // A --target is only meaningful for the volume being operated on. When the
+    // volume is named by a drive letter the check is exact; a GUID volume path is
+    // skipped here and validated against the resolved file list below, because the
+    // two spellings cannot be compared as strings (P9-T02 F-02).
+    if (!opts.targetPath.empty() && opts.volume.size() == 2 && opts.volume[1] == ':') {
+        if (!ExclusionEngine::IsWithinScope(opts.volume, opts.targetPath)) {
+            err << "Error: --target " << opts.targetPath << " is not on volume "
+                << opts.volume << ".\n";
+            return 2;
+        }
+    }
     planOpts.targetFolderPrefix = opts.targetPath;
     planOpts.mftTier = static_cast<MftTier>(opts.mftTier);
     planOpts.mftConfirmed = opts.confirmMft;
@@ -363,10 +376,20 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
     ConsoleProgressSink sink(out, opts.format == "json");
     CancelToken token;
 
+    // The journal belongs to one volume. Sharing a single file name across volumes
+    // meant a stale journal was silently reused (it was refused by the serial and
+    // plan-hash checks, so no resume ever crossed volumes, but the reuse was
+    // invisible) - P9-T02 F-09.
+    const auto journalVolumeTag = [] (std::string id) {
+        for (char& c : id) {
+            if (c == ':' || c == '\\' || c == '/' || c == '?' || c == '*') c = '_';
+        }
+        return id;
+    }(volPtr->Id());
     std::filesystem::path jPath = opts.journalPath.empty()
                                       ? (std::filesystem::temp_directory_path() /
                                          (opts.simScenarioPath.empty()
-                                              ? "auralite-cli.journal"
+                                              ? ("auralite-" + journalVolumeTag + ".journal")
                                               : ("auralite-sim-" + volPtr->Id() + ".journal")))
                                       : std::filesystem::path(opts.journalPath);
     if (opts.journalPath.empty() && !opts.simScenarioPath.empty()) {
@@ -465,6 +488,17 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
             out << StringTable::Lookup("IDS_DRY_RUN_HEADER") << "\n";
         }
         const ExtentCensus census = CensusExtents(reportSnap.files);
+        if (!opts.targetPath.empty()) {
+            const bool anyMatch = std::any_of(
+                reportSnap.files.begin(), reportSnap.files.end(), [&](const auralite::FileEntry& f) {
+                    return ExclusionEngine::IsWithinScope(opts.targetPath, f.path);
+                });
+            if (!anyMatch) {
+                err << "Warning: --target " << opts.targetPath
+                    << " matched no file on " << reportSnap.volumeId
+                    << "; nothing was selected.\n";
+            }
+        }
         out << "Volume: " << reportSnap.volumeId
             << " (" << reportSnap.geometry.fsName << ", "
             << FormatInteger(reportSnap.summary.totalClusters) << " clusters, "

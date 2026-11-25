@@ -652,6 +652,81 @@ void TestCliAndSchedulerSsdPolicy() {
     }
 }
 
+
+// P9-T02 SEC-02 / SEC-03 — path scope and target confinement.
+//
+// The real NTFS backend resolves a file through GetFinalPathNameByHandleW, which
+// returns the extended-length form (\\?\D:\Data\a.bin), while --target comes from
+// the command line as D:\Data. Comparing those strings directly selected nothing
+// on every real volume while passing on the emulator, whose paths are plain.
+void TestPathScopeAndTargetConfinement() {
+    using ExclusionEngine = auralite::ExclusionEngine;
+
+    // SEC-02: the same file spelled three ways is the same scope.
+    CHECK(ExclusionEngine::IsWithinScope("D:\\Data", "\\\\?\\D:\\Data\\a.bin"));
+    CHECK(ExclusionEngine::IsWithinScope("d:\\data\\", "D:\\DATA\\Sub\\b.bin"));
+    CHECK(ExclusionEngine::IsWithinScope("D:\\Data", "D:\\Data"));
+
+    // SEC-03: a scope never escapes its boundary.
+    CHECK(!ExclusionEngine::IsWithinScope("D:\\Data", "D:\\Database\\a.bin"));
+    CHECK(!ExclusionEngine::IsWithinScope("D:\\Data", "C:\\Data\\a.bin"));
+    CHECK(!ExclusionEngine::IsWithinScope("D:\\Data", "D:\\Data2"));
+    CHECK(!ExclusionEngine::IsWithinScope("", "D:\\Data\\a.bin"));
+
+    // The planner must select by scope, not by raw prefix. Ids 0 and 1 are $MFT
+    // and $MFTMirr, so the fixtures use ordinary record numbers.
+    constexpr FileId kTestFileA = 4001;
+    constexpr FileId kTestFileB = 4002;
+    AnalysisSnapshot snap{};
+    snap.volumeId = "D:";
+    snap.geometry.totalClusters = 4096;
+    snap.geometry.freeClusters = 2000;
+    snap.summary.totalClusters = 4096;
+    snap.summary.freeClusters = 2000;
+    snap.summary.usedClusters = 2096;
+    // Free space is required for a plan to place anything at all: with an empty
+    // bitmap every candidate is dropped after selection.
+    BitmapSnapshot bmp{};
+    bmp.startLcn = 0;
+    bmp.totalClusters = 4096;
+    bmp.bits.assign(4096 / 8 + 1, 0);
+    snap.bitmap = bmp;
+    snap.files = {
+        {kTestFileA, "a.bin", "\\\\?\\D:\\Data\\a.bin", 8192, 2, {}, FileCategory::Other,
+         FileState::Fragmented, SkipReason::None, {{0, 100, 1}, {1, 900, 1}}, 2, 0},
+        {kTestFileB, "b.bin", "\\\\?\\D:\\Database\\b.bin", 8192, 2, {}, FileCategory::Other,
+         FileState::Fragmented, SkipReason::None, {{0, 200, 1}, {1, 950, 1}}, 2, 0},
+    };
+    PolicyGate policy;
+    DefragPlanner planner;
+    PlanOptions opts{};
+    opts.mode = DefragMode::SingleFileOrFolder;
+    opts.targetFolderPrefix = "D:\\Data";
+
+    auto planRes = planner.Plan(snap, opts, policy);
+    CHECK(planRes.Ok());
+    bool sawA = false;
+    bool sawB = false;
+    for (const auto& m : planRes.Value().moves) {
+        if (m.fileId == kTestFileA) sawA = true;
+        if (m.fileId == kTestFileB) sawB = true;
+    }
+    CHECK(sawA);
+    CHECK(!sawB); // D:\\Database is not inside D:\\Data
+
+    // A --target outside the volume is refused before any analysis or move.
+    {
+        const char* argv[] = {"auralite-cli", "defrag", "--volume", "C:",
+                              "--sim", "tests/scenarios/SC-01.json", "--target", "D:\\Nope"};
+        CliOptions cli{};
+        std::string err;
+        CHECK(CliApp::ParseArgs(8, argv, cli, err));
+        std::ostringstream outStream, errStream;
+        CHECK(CliApp::Run(cli, outStream, errStream) == 2);
+        CHECK(errStream.str().find("is not on volume") != std::string::npos);
+    }
+}
+
 } // namespace
 
 int main() {
@@ -666,6 +741,7 @@ int main() {
     RUN_TEST(TestJournalCrashRecovery200Trials);
     RUN_TEST(TestAll20Scenarios);
     RUN_TEST(TestCsvInjectionSafetyAndStatistics);
+    RUN_TEST(TestPathScopeAndTargetConfinement);
     RUN_TEST(TestCliAndSchedulerSsdPolicy);
 
     std::cout << "\nSummary: " << (gTestsRun - gTestsFailed) << "/" << gTestsRun << " passed.\n";

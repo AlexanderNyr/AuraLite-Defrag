@@ -44,7 +44,11 @@ private:
     // Counted so a volume whose extents could not be read is reported as such
     // instead of as "0 fragmented files".
     mutable std::uint64_t extentReadFailures_{0};
-    UniqueHandle OpenFileByReference(FileId fileId, DWORD desiredAccess) const;
+    // protectClusters applies FSCTL_MARK_HANDLE/MARK_HANDLE_PROTECT_CLUSTERS. Only
+    // a handle that is about to be moved needs it: applying it during read-only
+    // analysis is an unrequested side effect on every file (P9-T02 F-03).
+    UniqueHandle OpenFileByReference(FileId fileId, DWORD desiredAccess,
+                                     bool protectClusters = false) const;
     // Full 64-bit reference (record index + sequence) as it came out of the USN
     // record. FileId only keeps the 48-bit index, and OpenFileById matches the
     // pair, so the index alone is not enough.

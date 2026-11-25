@@ -116,7 +116,8 @@ void RealNtfsBackend::NoteOpenFailure(const std::string& text) const {
     ++openFailures_;
 }
 
-UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAccess) const {
+UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAccess,
+                                                 bool protectClusters) const {
     UniqueHandle hVol = OpenVolumeForFsctl();
     if (!hVol.Valid()) {
         NoteOpenFailure("OpenFileById volume handle failed err=" +
@@ -149,11 +150,15 @@ UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAc
                                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                       nullptr, FILE_FLAG_BACKUP_SEMANTICS);
         if (hFile != INVALID_HANDLE_VALUE) {
-            // Protect our own handle from external defrag interference (D-01)
-            MARK_HANDLE_INFO mhi{};
-            mhi.HandleInfo = MARK_HANDLE_PROTECT_CLUSTERS;
-            DWORD ret = 0;
-            ::DeviceIoControl(hFile, FSCTL_MARK_HANDLE, &mhi, sizeof(mhi), nullptr, 0, &ret, nullptr);
+            if (protectClusters) {
+                // Protect our own handle from external defrag interference (D-01).
+                // Only for a move: an analysis handle is read-only and has no reason
+                // to withhold clusters from VSS or another defragmenter.
+                MARK_HANDLE_INFO mhi{};
+                mhi.HandleInfo = MARK_HANDLE_PROTECT_CLUSTERS;
+                DWORD ret = 0;
+                ::DeviceIoControl(hFile, FSCTL_MARK_HANDLE, &mhi, sizeof(mhi), nullptr, 0, &ret, nullptr);
+            }
             return UniqueHandle(hFile);
         }
         lastErr = ::GetLastError();
@@ -570,7 +575,7 @@ MoveResult RealNtfsBackend::MoveExtent(FileId fileId, Vcn startVcn, Lcn targetLc
         return {false, 0, ::GetLastError(), static_cast<std::uint32_t>(ErrorCode::E_MOVE_ACCESS_DENIED), false, SkipReason::AccessDenied};
     }
 
-    UniqueHandle hFile = OpenFileByReference(fileId, FILE_READ_ATTRIBUTES);
+    UniqueHandle hFile = OpenFileByReference(fileId, FILE_READ_ATTRIBUTES, /*protectClusters=*/true);
     if (!hFile.Valid()) {
         const DWORD err = ::GetLastError();
         return {false, 0, err, static_cast<std::uint32_t>(MapWin32ToMoveError(err)), false, SkipReason::AccessDenied};

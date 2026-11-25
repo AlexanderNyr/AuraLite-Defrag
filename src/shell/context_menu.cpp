@@ -71,7 +71,13 @@ public:
                 if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path) {
                     DWORD attrs = ::GetFileAttributesW(path);
                     std::wstring verb = (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) ? L"folder" : L"file";
-                    std::wstring args = verb + L" --target \"" + std::wstring(path) + L"\"";
+                    // A directory path ends with a separator, and in
+                    // --target "D:\Dir\" the trailing \" escapes the quote for
+                    // CommandLineToArgvW, corrupting the rest of the argument list.
+                    // Trim separators before quoting (P9-T02 F-08).
+                    std::wstring target(path);
+                    while (target.size() > 3 && target.back() == L'\\') target.pop_back();
+                    std::wstring args = verb + L" --target \"" + target + L"\"";
                     ::ShellExecuteW(nullptr, L"runas", cliPath_.c_str(), args.c_str(), nullptr, SW_SHOWNORMAL);
                     ::CoTaskMemFree(path);
                 }

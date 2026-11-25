@@ -107,6 +107,13 @@ public:
     // is what NTFS upcase tables do for the ASCII range.
     static std::string CanonicalPath(std::string_view path);
 
+    // True when `path` lies on or below `scopePrefix` after both are canonicalised.
+    // The boundary is a separator, so "D:\\Data" does not contain "D:\\Database",
+    // and a resolved long path (\\?\\D:\\Data\\x) matches a rule written as
+    // D:\\Data. Used for --target confinement and for folder selection; matching
+    // raw strings instead silently selected nothing on real NTFS (P9-T02 F-02).
+    static bool IsWithinScope(std::string_view scopePrefix, std::string_view path) noexcept;
+
     // Glob match with the documented semantics: '*' matches any run of
     // characters including '\'? No — '*' does not cross a separator, '**'
     // does. '?' matches exactly one character that is not a separator.

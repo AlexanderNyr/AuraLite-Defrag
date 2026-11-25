@@ -1,5 +1,6 @@
 #include "engine/planner.hpp"
 #include "core/error_catalog.hpp"
+#include "core/exclusions.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -111,18 +112,6 @@ Lcn AllocateFromRuns(std::vector<FreeRun>& runs,
         }
     }
     return kInvalidLcn;
-}
-
-bool IStartsWith(std::string_view text, std::string_view prefix) noexcept {
-    if (prefix.empty() || text.size() < prefix.size()) return false;
-    for (std::size_t i = 0; i < prefix.size(); ++i) {
-        char a = text[i];
-        char b = prefix[i];
-        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a - 'A' + 'a');
-        if (b >= 'A' && b <= 'Z') b = static_cast<char>(b - 'A' + 'a');
-        if (a != b) return false;
-    }
-    return true;
 }
 
 void EmitFileMovesToTarget(const FileEntry& f,
@@ -306,7 +295,8 @@ Result<DefragPlan> DefragPlanner::Plan(const AnalysisSnapshot& snapshot,
 
             case DefragMode::SingleFileOrFolder:
                 if (targetSet.count(f->id) > 0 ||
-                    (!options.targetFolderPrefix.empty() && IStartsWith(f->path, options.targetFolderPrefix))) {
+                    (!options.targetFolderPrefix.empty() &&
+                     ExclusionEngine::IsWithinScope(options.targetFolderPrefix, f->path))) {
                     if (f->fragmentCount > 1) selectFile = true;
                 }
                 break;
