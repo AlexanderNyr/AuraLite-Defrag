@@ -970,6 +970,44 @@ void TestPathCompositionFromUsn() {
     CHECK(leaf.substr(leaf.size() - 8) == "leaf.bin");
 }
 
+
+// --max-files: analysing a sample instead of a whole volume.
+//
+// Timing a 160k-file volume at 5.8 ms per file costs 15 minutes, so every
+// experiment with the scan (worker count, path composition) needs a way to cap
+// the file count. The flag is validated rather than trusted: a silent 0 would
+// make Enumerate return nothing and the report claim an empty volume.
+void TestMaxFilesOption() {
+    {
+        const char* argv[] = {"auralite-cli", "analyze", "--volume", "D:", "--max-files", "20000"};
+        CliOptions opts{};
+        std::string err;
+        CHECK(CliApp::ParseArgs(6, argv, opts, err));
+        CHECK(opts.maxScanFiles == 20000);
+    }
+    {
+        const char* argv[] = {"auralite-cli", "analyze", "--volume", "D:", "--max-files", "0"};
+        CliOptions opts{};
+        std::string err;
+        CHECK(!CliApp::ParseArgs(6, argv, opts, err));
+        CHECK(!err.empty());
+    }
+    {
+        const char* argv[] = {"auralite-cli", "analyze", "--volume", "D:", "--max-files", "12k"};
+        CliOptions opts{};
+        std::string err;
+        CHECK(!CliApp::ParseArgs(6, argv, opts, err));
+    }
+    {
+        const char* argv[] = {"auralite-cli", "analyze", "--volume", "D:", "--max-files", "-5"};
+        CliOptions opts{};
+        std::string err;
+        CHECK(!CliApp::ParseArgs(6, argv, opts, err));
+    }
+    // The default stays what the controller always used.
+    CHECK(PlanOptions{}.maxScanFiles == 1000000);
+}
+
 } // namespace
 
 int main() {
@@ -988,6 +1026,7 @@ int main() {
     RUN_TEST(TestScanProgressReporting);
     RUN_TEST(TestExtentCensusClassification);
     RUN_TEST(TestPathCompositionFromUsn);
+    RUN_TEST(TestMaxFilesOption);
     RUN_TEST(TestCliAndSchedulerSsdPolicy);
 
     std::cout << "\nSummary: " << (gTestsRun - gTestsFailed) << "/" << gTestsRun << " passed.\n";

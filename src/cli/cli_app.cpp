@@ -184,6 +184,7 @@ void CliApp::PrintHelp(std::ostream& out) {
         << "  --dry-run             Plan operations and report without moving clusters\n"
         << "  --exclude <pattern>   Additional exclusion glob/prefix (repeatable)\n"
         << "  --target <path>       Target file or folder for 'file'/'folder' verbs\n"
+        << "  --max-files <n>       Analyse at most n files (timing a sample of a large volume)\n"
         << "  --mft-tier <1|2|3>    MFT tier (default 3 report-only; tier 1 requires --confirm-mft)\n"
         << "  --confirm-mft         Confirm MFT metadata operation\n"
         << "  --export-csv <path>   Write RFC 4180 CSV report\n"
@@ -252,6 +253,20 @@ bool CliApp::ParseArgs(int argc, const char* const* argv, CliOptions& outOpts, s
             std::string pat;
             if (!needVal(pat)) return false;
             outOpts.extraExcludes.push_back(std::move(pat));
+        } else if (arg == "--max-files") {
+            std::string n;
+            if (!needVal(n)) return false;
+            if (n.empty() || n.size() > 9 ||
+                n.find_first_not_of("0123456789") != std::string::npos) {
+                outError = "Invalid --max-files (expected a positive whole number)";
+                return false;
+            }
+            const unsigned long long v = std::stoull(n);
+            if (v == 0) {
+                outError = "Invalid --max-files (expected a positive whole number)";
+                return false;
+            }
+            outOpts.maxScanFiles = static_cast<std::uint64_t>(v);
         } else if (arg == "--mft-tier") {
             std::string t;
             if (!needVal(t)) return false;
@@ -376,6 +391,8 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
     planOpts.targetFolderPrefix = opts.targetPath;
     planOpts.mftTier = static_cast<MftTier>(opts.mftTier);
     planOpts.mftConfirmed = opts.confirmMft;
+    // 0 means "no override"; the controller's own default (1,000,000) applies.
+    if (opts.maxScanFiles > 0) planOpts.maxScanFiles = opts.maxScanFiles;
 
     ConsoleProgressSink sink(out, err, opts.format == "json");
     CancelToken token;
@@ -549,6 +566,13 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
                     << FormatPercent(share) << " of the used space. defrag.exe excludes such\n"
                     << "files from its report, which is why its figure can read 0% here.\n";
             }
+        }
+        if (opts.maxScanFiles > 0) {
+            // A sample must never be mistaken for the volume. The figures above are
+            // real, but they describe N files, not D:.
+            err << "Note: analysis was limited to " << opts.maxScanFiles
+                << " file(s) by --max-files; the figures above describe that sample,\n"
+                << "not the whole volume.\n";
         }
         if (census.ReadFailed() && !reportSnap.isSimulation) {
             // The same failure mode that produced "0% fragmented": the layout could

@@ -4,6 +4,7 @@
 #include "core/logger.hpp"
 
 #include <iosfwd>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,9 @@ struct CliOptions {
     bool dryRun{false};
     bool confirmMft{false};
     int mftTier{3};
+    // 0 = no limit. Only exists so a scan can be timed on a sample of a big
+    // volume instead of waiting for the whole thing.
+    std::uint64_t maxScanFiles{0};
     std::vector<std::string> extraExcludes;
     bool showHelp{false};
 };

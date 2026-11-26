@@ -81,6 +81,9 @@ struct PlanOptions {
     std::string targetFolderPrefix;
     MftTier mftTier{MftTier::Tier3ReportOnly};
     bool mftConfirmed{false};
+    // Upper bound on the file count the scan may read. 1,000,000 is the historical
+    // default; a smaller value exists for timing a sample of a large volume.
+    std::uint64_t maxScanFiles{1000000};
 };
 
 struct DefragPlan {

@@ -222,7 +222,7 @@ Result<ExecutionOutcome> OperationController::RunOperation(IVolumeProvider& volu
                                                            bool isElevated,
                                                            AnalysisSnapshot* outBeforeSnapshot,
                                                            AnalysisSnapshot* outAfterSnapshot) {
-    auto beforeRes = Analyze(volume, fs, sink, token);
+    auto beforeRes = Analyze(volume, fs, sink, token, options.maxScanFiles);
     if (!beforeRes) return Result<ExecutionOutcome>::Failure(beforeRes.Error());
     const AnalysisSnapshot beforeSnap = beforeRes.Value();
     if (outBeforeSnapshot) *outBeforeSnapshot = beforeSnap;
@@ -262,7 +262,7 @@ Result<ExecutionOutcome> OperationController::RunOperation(IVolumeProvider& volu
 
     if (outAfterSnapshot && !options.dryRun) {
         state_.store(OperationState::Idle, std::memory_order_release);
-        auto afterRes = Analyze(volume, fs, sink, token);
+        auto afterRes = Analyze(volume, fs, sink, token, options.maxScanFiles);
         if (!afterRes) {
             return Result<ExecutionOutcome>::Failure(afterRes.Error());
         }

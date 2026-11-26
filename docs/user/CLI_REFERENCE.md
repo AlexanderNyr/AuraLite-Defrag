@@ -43,6 +43,7 @@ won and the document was corrected — see "Documented vs actual" at the end.
 | `--config <path>` | path | all | Load a JSON config file. |
 | `--journal <path>` | path | writing verbs | Journal file location. |
 | `--format <text\|json>` | text or json | all | Output format. Default `text`. |
+| `--max-files <n>` | positive integer | `analyze`, `status`, `export` | Read at most `n` files. The report then describes that sample and says so. Used to time a scan of a large volume without waiting for all of it. |
 | `--log-level <lvl>` | debug, info, warn, error | all | Log verbosity. |
 | `--help` | — | — | Print usage. |
 
