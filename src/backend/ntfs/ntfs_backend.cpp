@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
-#include <cstdlib>
+#include <iterator>
 #include <thread>
 #endif
 #include <string_view>
@@ -531,9 +531,27 @@ void RealNtfsBackend::ResolveLayouts(std::vector<FileEntry>& files) {
     unsigned workers = std::thread::hardware_concurrency();
     if (workers == 0) workers = 1;
     workers = std::min<unsigned>(workers, 8U);
-    if (const char* env = std::getenv("AURALITE_SCAN_WORKERS")) {
-        const int v = std::atoi(env);
-        if (v > 0) workers = static_cast<unsigned>(std::min(v, 64));
+    // Read through the Win32 API, not getenv/atoi: MSVC's CRT marks both as
+    // deprecated (C4996 "This function or variable may be unsafe") and the build
+    // treats that as an error, which is how this line broke the Windows build
+    // after passing the mingw type check. Parsing a small unsigned number by hand
+    // removes the CRT from the question entirely.
+    wchar_t workersEnv[16]{};
+    const DWORD workersEnvLen =
+        ::GetEnvironmentVariableW(L"AURALITE_SCAN_WORKERS", workersEnv,
+                                  static_cast<DWORD>(std::size(workersEnv)));
+    if (workersEnvLen > 0 && workersEnvLen < std::size(workersEnv)) {
+        unsigned v = 0;
+        bool digitsOnly = true;
+        for (DWORD i = 0; i < workersEnvLen; ++i) {
+            if (workersEnv[i] < L'0' || workersEnv[i] > L'9') {
+                digitsOnly = false;
+                break;
+            }
+            v = v * 10U + static_cast<unsigned>(workersEnv[i] - L'0');
+            if (v > 64U) break;
+        }
+        if (digitsOnly && v > 0) workers = std::min(v, 64U);
     }
     workers = static_cast<unsigned>(std::min<std::size_t>(workers, total));
 

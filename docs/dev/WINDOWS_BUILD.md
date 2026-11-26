@@ -112,6 +112,28 @@ is the only place the Win32 code paths are compiled at all.
 
 ---
 
+## 2a. C4996 is an error here, and mingw does not warn about it
+
+MSVC deprecates a family of CRT entry points with C4996 ("This function or
+variable may be unsafe"): `getenv`, `strcpy`, `sprintf`, `sscanf`, `fopen`,
+`strncpy`, `localtime` and friends. The Windows build promotes that to an error,
+so a single such call stops the build - and `make wincheck` reports PASS,
+because mingw's libc does not implement those warnings.
+
+This already happened once: `std::getenv` in `ResolveLayouts`, added to read
+`AURALITE_SCAN_WORKERS`, compiled cleanly under mingw and failed the real build
+at `ntfs_backend.cpp(534): error C4996: 'getenv'`. It now reads the variable with
+`GetEnvironmentVariableW`, and `tools/win32_syntax_check.py` scans `src/` for the
+whole deprecated family as part of `make wincheck`:
+
+```
+win32_syntax_check.py: PASS (10 Windows-only TUs parse, no MSVC-deprecated CRT calls in src/)
+```
+
+If a legitimate case appears, use the `_s` variant or the Win32 API rather than
+silencing the scan. `tools/` and `tests/` are not scanned: a benchmark parsing
+argv with `atoi` is not the same risk as a filesystem backend doing it.
+
 ## 3. Build
 
 ```powershell

@@ -56,6 +56,42 @@ COMPAT_DEFINES = [
 
 FLAGS = ["-std=c++20", "-fsyntax-only", "-Wall", "-Wextra", "-Wno-unknown-pragmas"]
 
+# CRT entry points MSVC deprecates with C4996 ("This function or variable may be
+# unsafe"). The Windows build treats C4996 as an error, and mingw does not warn
+# about any of them, so `getenv` in ntfs_backend.cpp reached the user's machine
+# and stopped the build after this check had reported PASS. The list is scanned
+# in src/ only: the benchmark and test tools legitimately parse argv with atoi.
+BANNED_CRT = {
+    "getenv": "use GetEnvironmentVariableW (Win32) or _dupenv_s",
+    "strcpy": "use std::string / strcpy_s",
+    "strcat": "use std::string",
+    "sprintf": "use std::format-style or snprintf",
+    "sscanf": "use std::from_chars",
+    "scanf": "use std::from_chars",
+    "strncpy": "use std::string",
+    "localtime": "use gmtime_s / localtime_s",
+    "asctime": "use a formatted string",
+    "gets": "use std::getline",
+}
+
+
+def scan_banned_crt(root: pathlib.Path) -> list[tuple[str, int, str, str]]:
+    """Find deprecated CRT calls that MSVC turns into errors and mingw does not."""
+    import re
+    found: list[tuple[str, int, str, str]] = []
+    # std:: is allowed in front: MSVC deprecates the C names under both spellings,
+    # which is exactly how std::getenv slipped through the first version of this scan.
+    pattern = re.compile(r"(?<![\w.>])(?:std::)?(" + "|".join(BANNED_CRT) + r")\s*\(")
+    for path in sorted((root / "src").rglob("*")):
+        if path.suffix not in {".cpp", ".hpp"}:
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            code = line.split("//", 1)[0]
+            for m in pattern.finditer(code):
+                found.append((str(path.relative_to(root)), lineno, m.group(1),
+                              BANNED_CRT[m.group(1)]))
+    return found
+
 
 def main(argv: list[str]) -> int:
     quiet = "--quiet" in argv
@@ -80,6 +116,14 @@ def main(argv: list[str]) -> int:
         elif not quiet:
             print(f"OK   {tu}")
 
+    banned = scan_banned_crt(root)
+    if banned:
+        print("\nwin32_syntax_check.py: FAIL (MSVC-deprecated CRT call in src/)",
+              file=sys.stderr)
+        for rel, lineno, fn, advice in banned:
+            print(f"  {rel}:{lineno}: {fn}() -> {advice}", file=sys.stderr)
+        return 1
+
     if failures:
         print("\nwin32_syntax_check.py: FAIL", file=sys.stderr)
         for tu, msg in failures:
@@ -87,7 +131,8 @@ def main(argv: list[str]) -> int:
         return 1
 
     if not quiet:
-        print(f"\nwin32_syntax_check.py: PASS ({len(TUS)} Windows-only TUs parse)")
+        print(f"\nwin32_syntax_check.py: PASS ({len(TUS)} Windows-only TUs parse, "
+              f"no MSVC-deprecated CRT calls in src/)")
     return 0
 
 
