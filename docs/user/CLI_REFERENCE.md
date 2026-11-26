@@ -93,6 +93,31 @@ auralite-cli analyze --volume D: --format json
 
 `--format json` emits a machine-readable summary suitable for monitoring.
 
+
+### Choosing how the volume is scanned
+
+Two engines produce the same analysis:
+
+| Engine | How it works | Speed on the reference 160k-file HDD |
+|---|---|---|
+| `mft` (default) | reads `$MFT` once, sequentially, and parses the records | seconds for the scan itself |
+| `handles` | opens every file and asks the volume for its layout | ~172 files/s, ~15 minutes |
+
+The choice is an environment variable, not a flag, because it is a diagnostic
+knob rather than a normal workflow:
+
+```powershell
+$env:AURALITE_SCAN_ENGINE = "handles"; auralite-cli analyze --volume D:
+$env:AURALITE_SCAN_ENGINE = "mft";     auralite-cli analyze --volume D:
+```
+
+`auto` (the default) uses `mft` and silently falls back to `handles` if the file
+table cannot be read. If `mft` is forced and fails, the failure is reported
+instead of hidden.
+
+`AURALITE_SCAN_WORKERS` (1-64) sets the number of concurrent layout reads used
+by the `handles` engine; it has no effect on `mft`, which does not open files.
+
 ### Dry run, then the real thing
 
 ```powershell

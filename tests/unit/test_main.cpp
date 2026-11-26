@@ -4,6 +4,7 @@
 #include "core/config.hpp"
 #include "core/error_catalog.hpp"
 #include "core/json.hpp"
+#include "backend/ntfs/mft/mft_scan.hpp"
 #include "core/path_tree.hpp"
 #include "core/logger.hpp"
 #include "core/strings.hpp"
@@ -25,6 +26,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <cstring>
 #include <vector>
 
 using namespace auralite;
@@ -1008,6 +1010,376 @@ void TestMaxFilesOption() {
     CHECK(PlanOptions{}.maxScanFiles == 1000000);
 }
 
+
+// $MFT fast path: record parsing, run lists, and the scan loop.
+//
+// The handle path costs one random read per file (5.8 ms on the reference HDD).
+// Reading the file table once replaces that, so this parser decides the numbers
+// the whole product reports - it is worth testing byte by byte, which is why the
+// record builder below writes a real record instead of a mock.
+
+namespace {
+
+void PutU16(std::string& b, std::size_t at, std::uint16_t v) {
+    b[at] = static_cast<char>(v & 0xFF);
+    b[at + 1] = static_cast<char>(v >> 8);
+}
+void PutU32(std::string& b, std::size_t at, std::uint32_t v) {
+    for (int i = 0; i < 4; ++i) b[at + i] = static_cast<char>((v >> (8 * i)) & 0xFF);
+}
+void PutU64(std::string& b, std::size_t at, std::uint64_t v) {
+    for (int i = 0; i < 8; ++i) b[at + i] = static_cast<char>((v >> (8 * i)) & 0xFF);
+}
+
+// Appends a resident attribute whose value is copied into it.
+void AddResidentAttr(std::string& rec, std::size_t& cursor, std::uint32_t type,
+                     const std::string& value, std::uint16_t flags = 0) {
+    const std::uint32_t len = static_cast<std::uint32_t>(24 + value.size());
+    const std::uint32_t aligned = (len + 7u) & ~7u;
+    PutU32(rec, cursor, type);
+    PutU32(rec, cursor + 4, aligned);
+    rec[cursor + 8] = 0;
+    rec[cursor + 9] = 0;
+    PutU16(rec, cursor + 10, 0);
+    PutU16(rec, cursor + 12, flags);
+    PutU16(rec, cursor + 14, 0);
+    PutU32(rec, cursor + 16, static_cast<std::uint32_t>(value.size()));
+    PutU16(rec, cursor + 20, 24);
+    rec[cursor + 22] = 0;
+    for (std::size_t i = 0; i < value.size(); ++i) rec[cursor + 24 + i] = value[i];
+    cursor += aligned;
+}
+
+// Appends a non-resident $DATA attribute with the given run list bytes.
+void AddDataAttr(std::string& rec, std::size_t& cursor, std::uint64_t realSize,
+                 const std::string& runList, std::uint16_t flags = 0) {
+    const std::uint32_t len = static_cast<std::uint32_t>(64 + runList.size());
+    const std::uint32_t aligned = (len + 7u) & ~7u;
+    PutU32(rec, cursor, mft::kTypeData);
+    PutU32(rec, cursor + 4, aligned);
+    rec[cursor + 8] = 1; // non-resident
+    rec[cursor + 9] = 0;
+    PutU16(rec, cursor + 10, 0);
+    PutU16(rec, cursor + 12, flags);
+    PutU16(rec, cursor + 14, 0);
+    PutU64(rec, cursor + 16, 0);  // start VCN
+    PutU64(rec, cursor + 24, 0);  // last VCN (0 = single cluster is still valid here)
+    PutU16(rec, cursor + 32, 64); // run list offset
+    PutU16(rec, cursor + 34, 0);
+    PutU64(rec, cursor + 40, realSize);
+    PutU64(rec, cursor + 48, realSize);
+    PutU64(rec, cursor + 56, realSize);
+    for (std::size_t i = 0; i < runList.size(); ++i) rec[cursor + 64 + i] = runList[i];
+    cursor += aligned;
+}
+
+std::string FileNameValue(std::uint64_t parentRef, const std::string& name, std::uint32_t attrs) {
+    // Layout: parentRef(0), four timestamps, allocSize(40), realSize(48),
+    // flags(56), reparse(60), nameLength(64), namespace(65), name(66...)
+    std::string v(66, '\0');
+    PutU64(v, 0, parentRef);
+    PutU32(v, 56, attrs);
+    v[64] = static_cast<char>(name.size() / 2);
+    v[65] = 1; // Win32 namespace
+    v.append(name);
+    return v;
+}
+
+// Builds one 1024-byte FILE record with a valid update sequence array.
+std::string BuildRecord(std::uint64_t parentRef, const std::string& nameUtf16,
+                        std::uint32_t fileAttrs, bool inUse, bool directory,
+                        std::uint64_t dataSize, const std::string& runList,
+                        bool withAttributeList = false) {
+    std::string rec(1024, '\0');
+    std::memcpy(rec.data(), "FILE", 4);
+    PutU16(rec, 0x04, 0x30); // update sequence array offset
+    PutU16(rec, 0x06, 3);    // one entry + two sectors of 512 bytes
+    PutU16(rec, 0x10, 7);    // sequence number
+    PutU16(rec, 0x12, 1);
+    PutU16(rec, 0x14, 0x38); // first attribute offset
+    PutU16(rec, 0x16, static_cast<std::uint16_t>((inUse ? 1 : 0) | (directory ? 2 : 0)));
+    PutU32(rec, 0x1C, 1024);
+    PutU64(rec, 0x20, 0); // base record reference: zero means this is a base record
+
+    std::size_t cursor = 0x38;
+    std::string stdInfo(48, '\0');
+    PutU32(stdInfo, 32, fileAttrs);
+    AddResidentAttr(rec, cursor, mft::kTypeStandardInformation, stdInfo);
+    AddResidentAttr(rec, cursor, mft::kTypeFileName, FileNameValue(parentRef, nameUtf16, fileAttrs));
+    if (withAttributeList) AddResidentAttr(rec, cursor, mft::kTypeAttributeList, std::string(32, '\0'));
+    if (!directory) {
+        if (runList.empty()) {
+            // A small file keeps its bytes inside the record: $DATA resident.
+            AddResidentAttr(rec, cursor, mft::kTypeData,
+                            std::string(static_cast<std::size_t>(dataSize), 'x'));
+        } else {
+            AddDataAttr(rec, cursor, dataSize, runList);
+        }
+    }
+    PutU32(rec, cursor, 0xFFFFFFFFu);
+    PutU32(rec, 0x18, static_cast<std::uint32_t>(cursor + 8));
+
+    // Update sequence array: entry 0 is the check value, the sectors must end with it.
+    PutU16(rec, 0x30, 0xAAAA);
+    PutU16(rec, 0x32, 0xBBBB);
+    PutU16(rec, 0x34, 0xCCCC);
+    PutU16(rec, 510, 0xAAAA);
+    PutU16(rec, 1022, 0xAAAA);
+    return rec;
+}
+
+std::string Utf16(const char* ascii) {
+    std::string out;
+    for (const char* p = ascii; *p; ++p) {
+        out.push_back(*p);
+        out.push_back('\0');
+    }
+    return out;
+}
+
+// Two runs: 4 clusters at LCN 100, then 6 clusters at LCN 200.
+std::string TwoRunList() {
+    std::string rl;
+    rl.push_back(static_cast<char>(0x11)); // 1-byte length, 1-byte offset
+    rl.push_back(4);
+    rl.push_back(100);
+    rl.push_back(static_cast<char>(0x11));
+    rl.push_back(6);
+    rl.push_back(100); // delta from 100 -> 200
+    rl.push_back(0);
+    return rl;
+}
+
+} // namespace
+
+void TestMftRecordParsing() {
+    const mft::RecordGeometry geom{1024, 4096};
+
+    // A normal fragmented file: two runs, 10 clusters of 4 KiB = 40 KiB.
+    {
+        const std::string raw = BuildRecord(5, Utf16("data.bin"), 0x00000080u, true, false,
+                                            40000, TwoRunList());
+        auto parsed = mft::ParseRecord(raw, 42, geom);
+        CHECK(parsed.Ok());
+        const auto& r = parsed.Value();
+        CHECK(r.id == 42);
+        CHECK(r.sequence == 7);
+        CHECK(r.parentRef == 5); // root directory
+        CHECK(r.name == "data.bin");
+        CHECK(r.inUse);
+        CHECK(!r.isDirectory);
+        CHECK(!r.isExtension);
+        CHECK(!r.hasAttributeList);
+        CHECK(r.sizeBytes == 40000);
+        CHECK(r.extents.size() == 2);
+        CHECK(r.extents[0].startVcn == 0 && r.extents[0].startLcn == 100 &&
+              r.extents[0].clusterCount == 4);
+        CHECK(r.extents[1].startVcn == 4 && r.extents[1].startLcn == 200 &&
+              r.extents[1].clusterCount == 6);
+
+        const FileEntry fe = mft::EntryFromRecord(r);
+        CHECK(fe.fragmentCount == 2);
+        CHECK(fe.allocatedClusters == 10);
+        CHECK(!fe.flags.isDirectory);
+    }
+
+    // A resident file: its data lives inside the record, so there is no run list
+    // and the census must call it resident rather than empty.
+    {
+        const std::string raw = BuildRecord(5, Utf16("tiny.txt"), 0x00000020u, true, false, 12,
+                                            std::string());
+        auto parsed = mft::ParseRecord(raw, 43, geom);
+        CHECK(parsed.Ok());
+        CHECK(parsed.Value().extents.empty());
+        CHECK(parsed.Value().hasResidentData);
+        const FileEntry fe = mft::EntryFromRecord(parsed.Value());
+        CHECK(fe.fragmentCount == 0);
+        CHECK(fe.flags.resident);
+        CHECK(fe.sizeBytes == 12);
+    }
+
+    // A directory: no $DATA at all, still must parse.
+    {
+        const std::string raw = BuildRecord(5, Utf16("Windows"), 0x00000010u, true, true, 0, "");
+        auto parsed = mft::ParseRecord(raw, 44, geom);
+        CHECK(parsed.Ok());
+        CHECK(parsed.Value().isDirectory);
+        CHECK(parsed.Value().extents.empty());
+        CHECK(parsed.Value().sizeBytes == 0);
+    }
+
+    // $ATTRIBUTE_LIST: the caller must be told, because the run list may be partial.
+    {
+        const std::string raw = BuildRecord(5, Utf16("huge.vhdx"), 0x00000080u, true, false,
+                                            1'000'000, TwoRunList(), true);
+        auto parsed = mft::ParseRecord(raw, 45, geom);
+        CHECK(parsed.Ok());
+        CHECK(parsed.Value().hasAttributeList);
+    }
+
+    // Compressed and sparse bits are reported, not dropped.
+    {
+        const std::string raw = BuildRecord(5, Utf16("packed.zip"), 0x00000800u, true, false,
+                                            8192, TwoRunList());
+        auto parsed = mft::ParseRecord(raw, 46, geom);
+        CHECK(parsed.Ok());
+        const FileEntry fe = mft::EntryFromRecord(parsed.Value());
+        CHECK(fe.flags.compressed);
+    }
+
+    // A torn record must be refused: the fixup is what detects it.
+    {
+        std::string raw = BuildRecord(5, Utf16("torn.bin"), 0x00000080u, true, false, 4096,
+                                      TwoRunList());
+        raw[510] = '\x01'; // sector no longer ends with the update sequence value
+        auto parsed = mft::ParseRecord(raw, 47, geom);
+        CHECK(!parsed.Ok());
+        CHECK(parsed.Error().code == ErrorCode::E_ENUM_MALFORMED_RECORD);
+    }
+
+    // A record that is not a FILE record at all.
+    {
+        std::string raw(1024, '\0');
+        auto parsed = mft::ParseRecord(raw, 48, geom);
+        CHECK(!parsed.Ok());
+    }
+
+    // Out-of-bounds attribute length: a hostile record must not walk the buffer.
+    {
+        std::string raw = BuildRecord(5, Utf16("bad.bin"), 0x00000080u, true, false, 4096,
+                                      TwoRunList());
+        PutU32(raw, 0x38 + 4, 0xFFFFFF00u); // first attribute claims to be enormous
+        auto parsed = mft::ParseRecord(raw, 49, geom);
+        CHECK(!parsed.Ok());
+    }
+}
+
+void TestMftRunListDecoding() {
+    const std::uint32_t bpc = 4096;
+
+    // Sparse run: the second entry has no offset bytes, so it occupies VCNs but
+    // no clusters. It must be skipped, exactly as FSCTL_GET_RETRIEVAL_POINTERS
+    // omits holes - otherwise a sparse file counts as hugely fragmented.
+    {
+        std::string rl;
+        rl.push_back(static_cast<char>(0x11)); // run: 2 clusters at LCN 50
+        rl.push_back(2);
+        rl.push_back(50);
+        rl.push_back(static_cast<char>(0x01)); // hole: 10 clusters, no LCN
+        rl.push_back(10);
+        rl.push_back(static_cast<char>(0x11)); // run: 3 clusters, 50 -> 60
+        rl.push_back(3);
+        rl.push_back(10);
+        rl.push_back(0);
+        auto runs = mft::DecodeRunList(rl, bpc);
+        CHECK(runs.Ok());
+        CHECK(runs.Value().size() == 2);
+        CHECK(runs.Value()[0].startLcn == 50 && runs.Value()[0].clusterCount == 2);
+        CHECK(runs.Value()[1].startVcn == 12);
+        CHECK(runs.Value()[1].startLcn == 60 && runs.Value()[1].clusterCount == 3);
+    }
+
+    // Backwards LCN delta (a signed field) must decode as negative.
+    {
+        std::string rl;
+        // Two-byte offsets: 200 does not fit in a signed byte, and reading it as
+        // one would turn it into -56 - the exact class of bug this test is for.
+        rl.push_back(static_cast<char>(0x21));
+        rl.push_back(4);
+        rl.push_back(static_cast<char>(200));
+        rl.push_back(0);
+        rl.push_back(static_cast<char>(0x21));
+        rl.push_back(4);
+        rl.push_back(static_cast<char>(0xF6)); // -10
+        rl.push_back(static_cast<char>(0xFF));
+        rl.push_back(0);
+        auto runs = mft::DecodeRunList(rl, bpc);
+        CHECK(runs.Ok());
+        CHECK(runs.Value()[1].startLcn == 190);
+    }
+
+    // Malformed: truncated entry, bad field widths, zero-length run.
+    {
+        std::string rl;
+        rl.push_back(static_cast<char>(0x11));
+        rl.push_back(4); // length present, offset byte missing
+        CHECK(!mft::DecodeRunList(rl, bpc).Ok());
+    }
+    {
+        const std::string rl(1, static_cast<char>(0x99)); // 9-byte fields
+        CHECK(!mft::DecodeRunList(rl, bpc).Ok());
+    }
+    {
+        std::string rl;
+        rl.push_back(static_cast<char>(0x11));
+        rl.push_back(0); // zero-length run
+        rl.push_back(10);
+        CHECK(!mft::DecodeRunList(rl, bpc).Ok());
+    }
+    // A zero cluster size would divide by zero downstream.
+    CHECK(!mft::DecodeRunList(std::string("\0", 1), 0).Ok());
+}
+
+void TestMftSequentialScan() {
+    const mft::RecordGeometry geom{1024, 4096};
+
+    // Four records: an in-use file, an unused one, a directory, and an extension
+    // record. Only the file and the directory may reach the caller.
+    std::string image;
+    image += BuildRecord(5, Utf16("a.bin"), 0x80u, true, false, 40000, TwoRunList());
+    {
+        std::string unused = BuildRecord(5, Utf16("gone.bin"), 0x80u, false, false, 0, std::string());
+        image += unused;
+    }
+    image += BuildRecord(5, Utf16("Docs"), 0x10u, true, true, 0, "");
+    {
+        std::string ext = BuildRecord(5, Utf16("ext.bin"), 0x80u, true, false, 4096, TwoRunList());
+        PutU64(ext, 0x20, 1); // base record reference -> this is an extension record
+        image += ext;
+    }
+
+    std::uint64_t reads = 0;
+    auto read = [&image, &reads](std::uint64_t offset, std::size_t length)
+        -> Result<std::string> {
+        ++reads;
+        if (offset + length > image.size()) {
+            return Result<std::string>::Failure(MakeError(ErrorCode::E_ENUM_IO));
+        }
+        return Result<std::string>::Success(image.substr(offset, length));
+    };
+
+    auto scanned = mft::ScanMft(image.size(), geom, read, 1000);
+    CHECK(scanned.Ok());
+    const auto& s = scanned.Value().stats;
+    CHECK(s.recordsSeen == 4);
+    CHECK(s.recordsUsed == 3);
+    CHECK(s.extensionRecords == 1);
+    CHECK(s.directories == 1);
+    CHECK(s.malformed == 0);
+    CHECK(scanned.Value().records.size() == 2);
+
+    // maxFiles caps the list but the counters still describe the whole table.
+    auto capped = mft::ScanMft(image.size(), geom, read, 1);
+    CHECK(capped.Ok());
+    CHECK(capped.Value().records.size() == 1);
+    CHECK(capped.Value().stats.recordsSeen == 4);
+
+    // One short read must fail the scan rather than silently truncate the list.
+    auto shortRead = [](std::uint64_t, std::size_t) -> Result<std::string> {
+        return Result<std::string>::Success(std::string(16, '\0'));
+    };
+    CHECK(!mft::ScanMft(image.size(), geom, shortRead, 1000).Ok());
+
+    // Zero record size is a geometry bug, not an empty volume.
+    CHECK(!mft::ScanMft(image.size(), mft::RecordGeometry{0, 4096}, read, 1000).Ok());
+
+    // Progress is reported while the scan runs.
+    std::uint64_t lastProgress = 0;
+    auto progress = [&lastProgress](std::uint64_t n) { lastProgress = n; };
+    CHECK(mft::ScanMft(image.size(), geom, read, 1000, progress).Ok());
+    CHECK(lastProgress == 4);
+}
+
 } // namespace
 
 int main() {
@@ -1027,6 +1399,9 @@ int main() {
     RUN_TEST(TestExtentCensusClassification);
     RUN_TEST(TestPathCompositionFromUsn);
     RUN_TEST(TestMaxFilesOption);
+    RUN_TEST(TestMftRecordParsing);
+    RUN_TEST(TestMftRunListDecoding);
+    RUN_TEST(TestMftSequentialScan);
     RUN_TEST(TestCliAndSchedulerSsdPolicy);
 
     std::cout << "\nSummary: " << (gTestsRun - gTestsFailed) << "/" << gTestsRun << " passed.\n";

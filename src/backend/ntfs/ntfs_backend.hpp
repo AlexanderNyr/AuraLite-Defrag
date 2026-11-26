@@ -71,6 +71,15 @@ private:
     // Second phase of Enumerate: layouts for every non-directory file, in
     // parallel. See the definition for why.
     void ResolveLayouts(std::vector<FileEntry>& files);
+    // The $MFT fast path: one sequential read of the file table instead of one
+    // random read per file. Returns a failure (never a partial list) when the
+    // table cannot be read, so Enumerate can fall back to the handle path.
+    Result<std::vector<FileEntry>> EnumerateViaMft(std::uint64_t maxFiles);
+    // Reads `length` bytes at `offset` of the $MFT data stream, following its run
+    // list. The stream is not contiguous in general.
+    Result<std::string> ReadMftRange(HANDLE hVol, const std::vector<Extent>& runs,
+                                     std::uint32_t bytesPerCluster,
+                                     std::uint64_t offset, std::size_t length) const;
     // Full 64-bit reference (record index + sequence) as it came out of the USN
     // record. FileId only keeps the 48-bit index, and OpenFileById matches the
     // pair, so the index alone is not enough.
@@ -88,6 +97,11 @@ private:
     std::unordered_map<FileId, FileFlags> flagsCache_;
     std::unordered_map<FileId, std::uint64_t> refCache_;
     std::function<void(std::uint64_t)> scanProgressCb_;
+    // AURALITE_SCAN_ENGINE = auto (default) | mft | handles. Both paths must
+    // produce the same census, which is how the fast path is validated on a real
+    // volume: run with each and compare the Extents line.
+    enum class ScanEngine { Auto = 0, Mft, Handles };
+    ScanEngine scanEngine_{ScanEngine::Auto};
     mutable UniqueHandle cachedVolHandle_;
     mutable std::mutex volHandleMutex_;
     VolumeGeometry cachedGeom_{};

@@ -567,6 +567,13 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
                     << "files from its report, which is why its figure can read 0% here.\n";
             }
         }
+        // Say which scan engine ran. The fast path is the default and falls back
+        // silently by design, so without this line an operator cannot tell a
+        // 3-second analysis from a 15-minute one, nor see how many records the
+        // parser rejected.
+        for (const auto& step : volPtr->Evidence().probeLog) {
+            if (step.rfind("Mft", 0) == 0) err << "Scan: " << step << "\n";
+        }
         if (opts.maxScanFiles > 0) {
             // A sample must never be mistaken for the volume. The figures above are
             // real, but they describe N files, not D:.

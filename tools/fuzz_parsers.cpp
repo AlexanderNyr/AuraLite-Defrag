@@ -18,6 +18,7 @@
 //   fuzz_parsers [--iterations N] [--seed S] [--target json|scenario|config|csv|usn|utf16|all]
 //
 #include "backend/emulator/scenario_loader.hpp"
+#include "backend/ntfs/mft/mft_record.hpp"
 #include "backend/usn/usn_parser.hpp"
 #include "core/config.hpp"
 #include "core/exclusions.hpp"
@@ -321,6 +322,112 @@ void RunCsv(const std::string& input) {
     }
 }
 
+// The MFT record parser reads attacker-reachable bytes too: a corrupt or hostile
+// volume can make every one of its 160k records lie, and the fast path parses
+// all of them without the kernel sanity-checking anything first.
+// A structurally valid FILE record. Random bytes never reach the interesting
+// paths (attribute walk, run list decode) - they fail the signature check on the
+// first four bytes - so the corpus starts from a real record and mutates it.
+std::string BuildMftSeed() {
+    std::string rec(1024, '\0');
+    auto put16 = [&rec](std::size_t at, std::uint16_t v) {
+        rec[at] = static_cast<char>(v & 0xFF);
+        rec[at + 1] = static_cast<char>(v >> 8);
+    };
+    auto put32 = [&rec](std::size_t at, std::uint32_t v) {
+        for (int i = 0; i < 4; ++i) rec[at + i] = static_cast<char>((v >> (8 * i)) & 0xFF);
+    };
+    auto put64 = [&rec](std::size_t at, std::uint64_t v) {
+        for (int i = 0; i < 8; ++i) rec[at + i] = static_cast<char>((v >> (8 * i)) & 0xFF);
+    };
+
+    rec[0] = 'F';
+    rec[1] = 'I';
+    rec[2] = 'L';
+    rec[3] = 'E';
+    put16(0x04, 0x30);
+    put16(0x06, 3);
+    put16(0x10, 3);
+    put16(0x14, 0x38);
+    put16(0x16, 1);
+    put32(0x1C, 1024);
+
+    std::size_t cursor = 0x38;
+    // $STANDARD_INFORMATION, resident, 48 bytes.
+    put32(cursor, 0x10);
+    put32(cursor + 4, 80);
+    put32(cursor + 16, 48);
+    put16(cursor + 20, 24);
+    put32(cursor + 24 + 32, 0x80);
+    cursor += 80;
+    // $FILE_NAME, resident, 66 + 16 bytes of UTF-16 name.
+    const std::size_t nameChars = 8;
+    const std::uint32_t fnLen = static_cast<std::uint32_t>(24 + 66 + nameChars * 2);
+    put32(cursor, 0x30);
+    put32(cursor + 4, fnLen);
+    put32(cursor + 16, static_cast<std::uint32_t>(66 + nameChars * 2));
+    put16(cursor + 20, 24);
+    put64(cursor + 24, 5); // parent: root directory
+    rec[cursor + 24 + 64] = static_cast<char>(nameChars);
+    rec[cursor + 24 + 65] = 1;
+    for (std::size_t i = 0; i < nameChars; ++i) rec[cursor + 24 + 66 + i * 2] = 'f';
+    cursor += fnLen;
+    // $DATA, non-resident, two runs: 4 clusters then 6 more, plus a sparse hole.
+    const std::string runList = std::string("\x11\x04\x64\x01\x02\x11\x06\x64\x00", 9);
+    const std::uint32_t dataLen = static_cast<std::uint32_t>(64 + runList.size());
+    put32(cursor, 0x80);
+    put32(cursor + 4, dataLen);
+    rec[cursor + 8] = 1;
+    put64(cursor + 16, 0);
+    put64(cursor + 24, 11);
+    put16(cursor + 32, 64);
+    put64(cursor + 40, 49152);
+    put64(cursor + 48, 49152);
+    for (std::size_t i = 0; i < runList.size(); ++i) rec[cursor + 64 + i] = runList[i];
+    cursor += dataLen;
+    put32(cursor, 0xFFFFFFFFu);
+    put32(0x18, static_cast<std::uint32_t>(cursor + 8));
+
+    // Fixup: sectors end with 0xAAAA, array entry 0 carries that value.
+    put16(0x30, 0xAAAA);
+    put16(0x32, 0xBBBB);
+    put16(0x34, 0xCCCC);
+    put16(510, 0xAAAA);
+    put16(1022, 0xAAAA);
+    return rec;
+}
+
+void RunMft(const std::string& input) {
+    std::string padded = input;
+    if (padded.size() < 1024) padded.resize(1024, '\0');
+    padded.resize(1024); // one record; the scan loop is exercised by the unit tests
+    mft::RecordGeometry geom{1024, 4096};
+    auto r = mft::ParseRecord(padded, 1, geom);
+    if (!r) {
+        ++gCurrent->rejected;
+        return;
+    }
+    ++gCurrent->accepted;
+    // Postconditions: the decoded run list is inside the volume's coordinate
+    // space and nothing grew unboundedly.
+    const auto& rec = r.Value();
+    if (rec.extents.size() > 4096) {
+        std::fprintf(stderr, "FUZZ INVARIANT: %zu extents from one record\n", rec.extents.size());
+        std::abort();
+    }
+    for (const auto& e : rec.extents) {
+        if (e.clusterCount == 0) {
+            std::fprintf(stderr, "FUZZ INVARIANT: zero-length extent\n");
+            std::abort();
+        }
+    }
+    if (mft::DecodeRunList(input, 4096).Ok()) {
+        ++gCurrent->accepted;
+    } else {
+        ++gCurrent->rejected;
+    }
+}
+
 void RunUsn(const std::string& input) {
     auto r = ParseUsnBuffer(input, 4096);
     if (!r) {
@@ -404,6 +511,7 @@ const std::vector<Target>& Targets() {
     static const std::vector<Target> targets = {
         {"json", RunJson},     {"scenario", RunScenario}, {"config", RunConfig},
         {"csv", RunCsv},       {"usn", RunUsn},           {"utf16", RunUtf16},
+        {"mft", RunMft},
     };
     return targets;
 }
@@ -483,7 +591,7 @@ void PrintUsage() {
         "auralite-fuzz — P9-T01 parser fuzzer\n"
         "  --iterations N   executions per target (default 1000000 total)\n"
         "  --seed S         PRNG seed (default 0xA0RA11E)\n"
-        "  --target NAME    json|scenario|config|csv|usn|utf16|all (default all)\n"
+        "  --target NAME    json|scenario|config|csv|usn|utf16|mft|all (default all)\n"
         "  --quick          same as --iterations 5000, for local loops\n");
 }
 
@@ -541,6 +649,8 @@ int main(int argc, char** argv) {
             corpus.push_back(BuildUsnSeed(8));
             corpus.push_back(BuildUsnSeed(64));
             corpus.push_back(BuildUsnSeed(256));
+        } else if (std::string_view(t.name) == "mft") {
+            corpus.push_back(BuildMftSeed());
         } else if (std::string_view(t.name) == "utf16") {
             corpus.push_back(std::string("\x41\x00\x42\x00", 4));
             corpus.push_back(std::string("\x00\xD8\x00\xDC", 4)); // valid pair

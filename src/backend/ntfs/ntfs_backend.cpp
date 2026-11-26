@@ -1,5 +1,6 @@
 #include "backend/ntfs/ntfs_backend.hpp"
 #include "core/error_catalog.hpp"
+#include "backend/ntfs/mft/mft_scan.hpp"
 #include "core/path_tree.hpp"
 
 #ifdef _WIN32
@@ -20,7 +21,18 @@
 namespace auralite {
 
 RealNtfsBackend::RealNtfsBackend(VolumeId volumeId)
-    : volumeId_(std::move(volumeId)) {}
+    : volumeId_(std::move(volumeId)) {
+    // Both engines must produce the same census; AURALITE_SCAN_ENGINE exists so
+    // that claim can be checked on a real volume instead of being asserted.
+    wchar_t engine[16]{};
+    const DWORD len = ::GetEnvironmentVariableW(L"AURALITE_SCAN_ENGINE", engine,
+                                                static_cast<DWORD>(std::size(engine)));
+    if (len > 0 && len < std::size(engine)) {
+        std::wstring_view value(engine, len);
+        if (value == L"handles") scanEngine_ = ScanEngine::Handles;
+        else if (value == L"mft") scanEngine_ = ScanEngine::Mft;
+    }
+}
 
 CapabilityBits RealNtfsBackend::Capabilities() const {
     CapabilityBits caps{};
@@ -604,7 +616,193 @@ void RealNtfsBackend::ResolveLayouts(std::vector<FileEntry>& files) {
     if (cb) report(files.size());
 }
 
+Result<std::string> RealNtfsBackend::ReadMftRange(HANDLE hVol, const std::vector<Extent>& runs,
+                                                  std::uint32_t bytesPerCluster,
+                                                  std::uint64_t offset, std::size_t length) const {
+    std::string out;
+    out.resize(length);
+    std::size_t done = 0;
+    while (done < length) {
+        const std::uint64_t vcnOffset = offset + done;
+        const std::uint64_t vcn = vcnOffset / bytesPerCluster;
+        const std::uint64_t within = vcnOffset % bytesPerCluster;
+
+        const Extent* hit = nullptr;
+        for (const auto& run : runs) {
+            const std::uint64_t begin = static_cast<std::uint64_t>(run.startVcn);
+            const std::uint64_t end = begin + static_cast<std::uint64_t>(run.clusterCount);
+            if (vcn >= begin && vcn < end) {
+                hit = &run;
+                break;
+            }
+        }
+        if (hit == nullptr) {
+            return Result<std::string>::Failure(
+                MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, 0, "mft: run list does not cover the table"));
+        }
+
+        const std::uint64_t clustersLeft =
+            static_cast<std::uint64_t>(hit->startVcn) + static_cast<std::uint64_t>(hit->clusterCount) - vcn;
+        const std::uint64_t bytesLeftInRun = clustersLeft * bytesPerCluster - within;
+        const std::size_t want = static_cast<std::size_t>(
+            std::min<std::uint64_t>(bytesLeftInRun, static_cast<std::uint64_t>(length - done)));
+
+        const std::uint64_t lcn = static_cast<std::uint64_t>(hit->startLcn) + (vcn - hit->startVcn);
+        const std::uint64_t physical = lcn * bytesPerCluster + within;
+
+        LARGE_INTEGER pos{};
+        pos.QuadPart = static_cast<LONGLONG>(physical);
+        if (!::SetFilePointerEx(hVol, pos, nullptr, FILE_BEGIN)) {
+            return Result<std::string>::Failure(
+                MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError(), "mft: seek failed"));
+        }
+        DWORD read = 0;
+        if (!::ReadFile(hVol, out.data() + done, static_cast<DWORD>(want), &read, nullptr) ||
+            read != want) {
+            return Result<std::string>::Failure(
+                MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError(), "mft: read failed"));
+        }
+        done += want;
+    }
+    return Result<std::string>::Success(std::move(out));
+}
+
+Result<std::vector<FileEntry>> RealNtfsBackend::EnumerateViaMft(std::uint64_t maxFiles) {
+    auto geomRes = Geometry();
+    if (!geomRes) return Result<std::vector<FileEntry>>::Failure(geomRes.Error());
+    const VolumeGeometry geom = geomRes.Value();
+    if (geom.mftValidDataLength == 0 || geom.bytesPerFileRecordSegment == 0) {
+        return Result<std::vector<FileEntry>>::Failure(
+            MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, 0, "mft: geometry does not describe the table"));
+    }
+
+    // $MFT is file 0. Its own run list says where its clusters really are; the
+    // geometry only gives the start LCN, which is enough to bootstrap but not to
+    // read a fragmented table.
+    UniqueHandle hMft = OpenFileByReference(0, FILE_READ_ATTRIBUTES | FILE_READ_DATA);
+    if (!hMft.Valid()) {
+        return Result<std::vector<FileEntry>>::Failure(MakeError(
+            ErrorCode::E_ENUM_ACCESS_DENIED, volumeId_, 0, ::GetLastError(), "mft: cannot open $MFT"));
+    }
+    auto runsRes = ReadRetrievalPointers(hMft.Get());
+    if (!runsRes || runsRes.Value().empty()) {
+        return Result<std::vector<FileEntry>>::Failure(MakeError(
+            ErrorCode::E_ENUM_IO, volumeId_, 0, 0, "mft: cannot read the $MFT run list"));
+    }
+    const std::vector<Extent> runs = runsRes.Value();
+
+    UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES | FILE_READ_DATA);
+    if (!hVol.Valid()) {
+        return Result<std::vector<FileEntry>>::Failure(
+            MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError()));
+    }
+
+    mft::RecordGeometry recGeom{};
+    recGeom.recordSize = geom.bytesPerFileRecordSegment;
+    recGeom.bytesPerCluster = geom.bytesPerCluster;
+
+    const std::function<void(std::uint64_t)> progress = scanProgressCb_;
+    const std::vector<Extent> mftRuns = runs;
+    const HANDLE volHandle = hVol.Get();
+    const std::uint32_t bytesPerCluster = geom.bytesPerCluster;
+
+    auto reader = [this, volHandle, mftRuns, bytesPerCluster](std::uint64_t offset, std::size_t length) {
+        return ReadMftRange(volHandle, mftRuns, bytesPerCluster, offset, length);
+    };
+
+    auto scanRes = mft::ScanMft(geom.mftValidDataLength, recGeom, reader, maxFiles, progress);
+    if (!scanRes) {
+        mediaDetector_.NoteProbe(std::string("MftScanFailed: ") +
+                                 std::string(scanRes.Error().diagnosticDetail));
+        return Result<std::vector<FileEntry>>::Failure(scanRes.Error());
+    }
+    mft::ScanResult scan = std::move(scanRes.Value());
+
+    PathComposer composer;
+    composer.AddDirectory(PathComposer::kRootDirectoryId, PathComposer::kRootDirectoryId, ".");
+
+    std::vector<FileEntry> entries;
+    entries.reserve(scan.records.size());
+    for (const auto& rec : scan.records) {
+        FileEntry fe = mft::EntryFromRecord(rec);
+        const FileId parent = static_cast<FileId>(rec.parentRef & 0x0000FFFFFFFFFFFFULL);
+        if (fe.flags.isDirectory) {
+            composer.AddDirectory(fe.id, parent, fe.name);
+        } else {
+            composer.AddFile(fe.id, parent, fe.name);
+        }
+        // The full 64-bit reference (sequence + index) is what OpenFileById wants,
+        // and the record just handed it over for free.
+        refCache_[fe.id] = (rec.sequence << 48) | static_cast<std::uint64_t>(fe.id);
+        entries.push_back(std::move(fe));
+    }
+
+    // Files whose attributes are split across records: the run list decoded from
+    // the base record may be incomplete, so those are confirmed the old way. On a
+    // normal volume this is a handful of files.
+    if (!scan.needsHandleFallback.empty()) {
+        std::uint64_t failures = 0;
+        for (const FileId id : scan.needsHandleFallback) {
+            auto it = std::find_if(entries.begin(), entries.end(),
+                                   [id](const FileEntry& e) { return e.id == id; });
+            if (it == entries.end()) continue;
+            auto hf = OpenFileByReference(id, FILE_READ_ATTRIBUTES | FILE_READ_DATA);
+            if (!hf.Valid()) {
+                it->flags.isLocked = true;
+                ++failures;
+                continue;
+            }
+            LARGE_INTEGER fsize{};
+            if (::GetFileSizeEx(hf.Get(), &fsize)) {
+                it->sizeBytes = static_cast<std::uint64_t>(fsize.QuadPart);
+            }
+            auto extRes = ReadRetrievalPointers(hf.Get());
+            if (!extRes) {
+                it->flags.isLocked = true;
+                ++failures;
+                continue;
+            }
+            it->extents = std::move(extRes.Value());
+            it->flags.resident = it->extents.empty();
+            it->fragmentCount = it->extents.empty() ? 0
+                                                    : static_cast<std::uint32_t>(it->extents.size());
+            it->allocatedClusters = 0;
+            for (const auto& e : it->extents) it->allocatedClusters += e.clusterCount;
+        }
+        if (failures > 0) {
+            mediaDetector_.NoteProbe("MftFallbackFailed count=" + std::to_string(failures));
+        }
+    }
+
+    const std::string rootPrefix = Win32Platform::WideToUtf8(VolumeRootPath());
+    for (auto& fe : entries) {
+        std::string composed = composer.PathOf(fe.id, rootPrefix);
+        if (composed.empty()) composed = "\\" + fe.name;
+        fe.path = std::move(composed);
+        pathCache_[fe.id] = fe.path;
+        flagsCache_[fe.id] = fe.flags;
+    }
+
+    if (scanProgressCb_) scanProgressCb_(entries.size());
+    mediaDetector_.NoteProbe("MftScan records=" + std::to_string(scan.stats.recordsSeen) +
+                             " used=" + std::to_string(scan.stats.recordsUsed) +
+                             " extension=" + std::to_string(scan.stats.extensionRecords) +
+                             " attrlist=" + std::to_string(scan.stats.withAttributeList) +
+                             " malformed=" + std::to_string(scan.stats.malformed));
+    return Result<std::vector<FileEntry>>::Success(std::move(entries));
+}
+
 Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles) {
+    // The fast path replaces ~160,000 random reads with one sequential read of
+    // $MFT. It is the default, but it is never trusted blindly: any failure falls
+    // back to the handle path rather than failing the analysis.
+    if (scanEngine_ != ScanEngine::Handles) {
+        auto viaMft = EnumerateViaMft(maxFiles);
+        if (viaMft) return viaMft;
+        if (scanEngine_ == ScanEngine::Mft) return viaMft; // explicitly requested: report it
+        mediaDetector_.NoteProbe("MftScanUnavailable, falling back to the handle scan");
+    }
+
     UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES | FILE_READ_DATA);
     if (!hVol.Valid()) {
         return Result<std::vector<FileEntry>>::Failure(MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError()));

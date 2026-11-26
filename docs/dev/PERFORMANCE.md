@@ -151,6 +151,44 @@ same numbers, and an artificial 2× slowdown in the paint loop produced +2104%
 regress >20%") is *measured and reported* but not *enforced* until it runs on
 RH-2. Recorded as such rather than claimed as met.
 
+### 6. The remaining cost is one random read per file, so stop opening files
+
+After the path fix and the worker pool the scan ran at 172 files/s. That is
+5.8 ms per file with eight requests in flight, i.e. ~46 ms per request: the disk,
+not the CPU, and not the API. Two syscalls per file are left
+(`OpenFileById`, `FSCTL_GET_RETRIEVAL_POINTERS`) and each one seeks.
+
+Everything those calls return is already written in the file's own MFT record:
+the size, the allocation, the run list. So the fast path reads `$MFT` once -
+314 MB on the reference volume, contiguous, its own run list being one fragment -
+and parses the records in memory (`src/backend/ntfs/mft/`). One sequential read
+instead of 160,000 random ones.
+
+What the parser has to get right, because the whole report depends on it:
+
+| Concern | Handling |
+|---|---|
+| Torn or corrupt records | the update sequence array is verified; a record that fails is counted, never trusted |
+| Attributes split across records | `$ATTRIBUTE_LIST` is detected and the file is re-resolved through `OpenFileById` |
+| Extension records | skipped; their data belongs to the base record |
+| Sparse holes | omitted, exactly as `FSCTL_GET_RETRIEVAL_POINTERS` omits them, so the fragmentation count cannot drift |
+| Resident data | flagged `resident`, not `empty` - the misreport that produced "0% fragmented" |
+| Hostile field lengths | every attribute and run-length field is bounds-checked; `make fuzz` mutates a valid record 1,000,000 times under ASan/UBSan |
+| The whole table unreadable | `Enumerate` falls back to the handle path; the fast path never fails an analysis |
+
+The two engines must agree. `AURALITE_SCAN_ENGINE` exists so that claim is
+checked rather than asserted:
+
+```bat
+set AURALITE_SCAN_ENGINE=handles
+auralite-cli analyze --volume D:
+set AURALITE_SCAN_ENGINE=mft
+auralite-cli analyze --volume D:
+```
+
+The `Files:` and `Extents:` lines must match to the unit. `auto` (the default)
+is `mft` with a fallback to `handles`.
+
 ## What is still open
 
 | Item | Blocked by |

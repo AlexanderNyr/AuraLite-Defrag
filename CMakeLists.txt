@@ -28,6 +28,8 @@ add_library(auralite_core STATIC
     src/backend/emulator/emulator_backend.cpp
     src/backend/emulator/scenario_loader.cpp
     src/backend/usn/usn_parser.cpp
+    src/backend/ntfs/mft/mft_record.cpp
+    src/backend/ntfs/mft/mft_scan.cpp
     src/reporting/cluster_aggregator.cpp
     src/reporting/statistics.cpp
     src/reporting/csv_exporter.cpp
