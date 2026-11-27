@@ -77,6 +77,7 @@ private:
     Result<std::vector<FileEntry>> EnumerateViaMft(std::uint64_t maxFiles);
     // Reads `length` bytes at `offset` of the $MFT data stream, following its run
     // list. The stream is not contiguous in general.
+    Result<std::string> ReadVolumeAt(HANDLE hVol, std::uint64_t offset, std::size_t length) const;
     Result<std::string> ReadMftRange(HANDLE hVol, const std::vector<Extent>& runs,
                                      std::uint32_t bytesPerCluster,
                                      std::uint64_t offset, std::size_t length) const;

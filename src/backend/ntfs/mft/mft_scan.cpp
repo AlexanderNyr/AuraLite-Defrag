@@ -15,6 +15,55 @@ constexpr std::size_t kChunkBytes = 1024U * 1024U;
 
 } // namespace
 
+Result<std::string> ReadStreamRange(const std::vector<Extent>& runs, std::uint32_t bytesPerCluster,
+                                   std::uint64_t offset, std::size_t length,
+                                   const ReadAtFn& readAt) {
+    if (bytesPerCluster == 0) {
+        return Result<std::string>::Failure(
+            MakeError(ErrorCode::E_ENUM_IO, {}, 0, 0, "stream: zero cluster size"));
+    }
+    std::string out;
+    out.resize(length);
+    std::size_t done = 0;
+    while (done < length) {
+        const std::uint64_t streamOffset = offset + done;
+        const std::uint64_t vcn = streamOffset / bytesPerCluster;
+        const std::uint64_t within = streamOffset % bytesPerCluster;
+
+        const Extent* hit = nullptr;
+        for (const auto& run : runs) {
+            const std::uint64_t begin = static_cast<std::uint64_t>(run.startVcn);
+            const std::uint64_t end = begin + static_cast<std::uint64_t>(run.clusterCount);
+            if (vcn >= begin && vcn < end) {
+                hit = &run;
+                break;
+            }
+        }
+        if (hit == nullptr) {
+            return Result<std::string>::Failure(
+                MakeError(ErrorCode::E_ENUM_IO, {}, 0, 0, "stream: run list does not cover the range"));
+        }
+
+        const std::uint64_t clustersLeft = static_cast<std::uint64_t>(hit->startVcn) +
+                                           static_cast<std::uint64_t>(hit->clusterCount) - vcn;
+        const std::uint64_t bytesLeftInRun = clustersLeft * bytesPerCluster - within;
+        const std::size_t want = static_cast<std::size_t>(
+            std::min<std::uint64_t>(bytesLeftInRun, static_cast<std::uint64_t>(length - done)));
+        const std::uint64_t physical =
+            (static_cast<std::uint64_t>(hit->startLcn) + (vcn - hit->startVcn)) * bytesPerCluster + within;
+
+        auto chunk = readAt(physical, want);
+        if (!chunk) return Result<std::string>::Failure(chunk.Error());
+        if (chunk.Value().size() != want) {
+            return Result<std::string>::Failure(
+                MakeError(ErrorCode::E_ENUM_IO, {}, 0, 0, "stream: short read"));
+        }
+        out.replace(done, want, chunk.Value());
+        done += want;
+    }
+    return Result<std::string>::Success(std::move(out));
+}
+
 Result<ScanResult> ScanMft(std::uint64_t validDataLength, const RecordGeometry& geometry,
                            const ReadFn& read, std::uint64_t maxFiles,
                            const std::function<void(std::uint64_t)>& progress) {

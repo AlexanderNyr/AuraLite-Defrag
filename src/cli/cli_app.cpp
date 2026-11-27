@@ -460,6 +460,12 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
         } else {
             err << StringTable::Lookup(opRes.Error().userMessageKey)
                 << " (" << ErrorCodeName(opRes.Error().code) << ")\n";
+            // Technical detail, never user paths: which step of the scan failed.
+            // Without it, a scan failure reads as a generic error code and the
+            // operator has no way to tell a rights problem from a malformed table.
+            if (!opRes.Error().diagnosticDetail.empty()) {
+                err << "Detail: " << opRes.Error().diagnosticDetail << "\n";
+            }
             printProbeTrace();
             if (opRes.Error().code == ErrorCode::E_PREFLIGHT_NOT_ELEVATED ||
                 opRes.Error().code == ErrorCode::E_PREFLIGHT_VOLUME_INACCESSIBLE) {

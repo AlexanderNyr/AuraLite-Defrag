@@ -1380,6 +1380,92 @@ void TestMftSequentialScan() {
     CHECK(lastProgress == 4);
 }
 
+
+// The $MFT bootstrap, end to end and without Windows.
+//
+// Two things failed or could fail here on the real volume:
+//   * OpenFileById(0) is rejected with ERROR_INVALID_PARAMETER (err=87), so the
+//     table cannot be opened as "file 0" - record 0 is read straight off the
+//     volume at MftStartLcn instead, and its own run list locates the rest;
+//   * $MFT may be fragmented, so stream offsets have to be mapped through a run
+//     list. Reading it as one contiguous span would silently misparse records.
+void TestMftBootstrapFromRecordZero() {
+    constexpr std::uint32_t kCluster = 1024;   // one record per cluster, keeps the image small
+    constexpr std::uint64_t kMftStartLcn = 4;  // where record 0 lives, per volume geometry
+    const mft::RecordGeometry geom{1024, kCluster};
+
+    // $MFT is fragmented: records 0-1 in clusters 4-5, records 2-3 in clusters 9-10.
+    std::string runList;
+    runList.push_back(static_cast<char>(0x11));
+    runList.push_back(2);          // 2 clusters
+    runList.push_back(4);          // at LCN 4
+    runList.push_back(static_cast<char>(0x11));
+    runList.push_back(2);          // 2 clusters
+    runList.push_back(5);          // +5 -> LCN 9
+    runList.push_back(0);
+
+    // Record 0 describes $MFT itself, which is exactly what the bootstrap parses.
+    std::string rec0 = BuildRecord(5, Utf16("$MFT"), 0x00000006u, true, false, 4 * kCluster, runList);
+    std::string rec1 = BuildRecord(5, Utf16("a.bin"), 0x80u, true, false, 40000, TwoRunList());
+    std::string rec2 = BuildRecord(5, Utf16("Docs"), 0x10u, true, true, 0, std::string());
+    std::string rec3 = BuildRecord(5, Utf16("b.bin"), 0x80u, true, false, 8192, TwoRunList());
+
+    // A 64-cluster volume with the table written where its run list says it is.
+    std::string volume(64 * kCluster, '\0');
+    auto place = [&volume](std::uint64_t lcn, const std::string& bytes) {
+        std::memcpy(volume.data() + lcn * kCluster, bytes.data(), bytes.size());
+    };
+    place(kMftStartLcn + 0, rec0);
+    place(kMftStartLcn + 1, rec1);
+    place(9, rec2);
+    place(10, rec3);
+
+    auto readAt = [&volume](std::uint64_t offset, std::size_t length) -> Result<std::string> {
+        if (offset + length > volume.size()) {
+            return Result<std::string>::Failure(MakeError(ErrorCode::E_ENUM_IO));
+        }
+        return Result<std::string>::Success(volume.substr(offset, length));
+    };
+
+    // Step 1: record 0, read at the geometry's start LCN - no handle, no open.
+    auto first = readAt(kMftStartLcn * kCluster, geom.recordSize);
+    CHECK(first.Ok());
+    auto parsed0 = mft::ParseRecord(first.Value(), 0, geom);
+    CHECK(parsed0.Ok());
+    CHECK(parsed0.Value().name == "$MFT");
+    CHECK(parsed0.Value().extents.size() == 2);
+    CHECK(parsed0.Value().extents[0].startLcn == static_cast<Lcn>(kMftStartLcn));
+    CHECK(parsed0.Value().extents[1].startLcn == 9);
+
+    const std::vector<Extent> runs = parsed0.Value().extents;
+
+    // Step 2: the run list must map stream offsets onto both fragments.
+    auto span = mft::ReadStreamRange(runs, kCluster, 0, 4 * 1024, readAt);
+    CHECK(span.Ok());
+    CHECK(span.Value().size() == 4 * 1024);
+    CHECK(span.Value().compare(2 * 1024, 4, "FILE") == 0); // record 2 came from cluster 9
+
+    // Step 3: the scan sees all four records, in order, across the gap.
+    auto readStream = [&runs, readAt](std::uint64_t offset, std::size_t length) {
+        return mft::ReadStreamRange(runs, kCluster, offset, length, readAt);
+    };
+    auto scanned = mft::ScanMft(4 * 1024, geom, readStream, 1000);
+    CHECK(scanned.Ok());
+    CHECK(scanned.Value().records.size() == 4);
+    CHECK(scanned.Value().stats.malformed == 0);
+    CHECK(scanned.Value().records[0].name == "$MFT");
+    CHECK(scanned.Value().records[1].name == "a.bin");
+    CHECK(scanned.Value().records[2].name == "Docs");
+    CHECK(scanned.Value().records[2].isDirectory);
+    CHECK(scanned.Value().records[3].name == "b.bin");
+
+    // A run list that does not cover the requested range must fail loudly rather
+    // than return zeros, which would parse as empty records.
+    auto beyond = mft::ReadStreamRange(runs, kCluster, 4 * 1024, kCluster, readAt);
+    CHECK(!beyond.Ok());
+    CHECK(!mft::ReadStreamRange(runs, 0, 0, 16, readAt).Ok());
+}
+
 } // namespace
 
 int main() {
@@ -1402,6 +1488,7 @@ int main() {
     RUN_TEST(TestMftRecordParsing);
     RUN_TEST(TestMftRunListDecoding);
     RUN_TEST(TestMftSequentialScan);
+    RUN_TEST(TestMftBootstrapFromRecordZero);
     RUN_TEST(TestCliAndSchedulerSsdPolicy);
 
     std::cout << "\nSummary: " << (gTestsRun - gTestsFailed) << "/" << gTestsRun << " passed.\n";

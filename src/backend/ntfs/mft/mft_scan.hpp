@@ -29,6 +29,18 @@ struct ScanStats {
 // stream. Returning a short or failed result aborts the scan.
 using ReadFn = std::function<Result<std::string>(std::uint64_t offset, std::size_t length)>;
 
+// Reads exactly `length` bytes from a volume at an absolute offset.
+using ReadAtFn = std::function<Result<std::string>(std::uint64_t volumeOffset, std::size_t length)>;
+
+// Maps a byte range of a non-contiguous stream onto its runs and reads it.
+// $MFT is described by its own run list, which may contain more than one run, so
+// "the table" is not one contiguous span; this is the piece that turns stream
+// offsets into physical offsets. Portable and therefore tested: a fragmented
+// table is the case that would silently misread records otherwise.
+Result<std::string> ReadStreamRange(const std::vector<Extent>& runs, std::uint32_t bytesPerCluster,
+                                   std::uint64_t offset, std::size_t length,
+                                   const ReadAtFn& readAt);
+
 // Records that the handle path has to confirm, because the record itself says
 // its attributes are split across records ($ATTRIBUTE_LIST).
 struct ScanResult {

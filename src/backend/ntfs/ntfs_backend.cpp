@@ -616,55 +616,35 @@ void RealNtfsBackend::ResolveLayouts(std::vector<FileEntry>& files) {
     if (cb) report(files.size());
 }
 
+Result<std::string> RealNtfsBackend::ReadVolumeAt(HANDLE hVol, std::uint64_t offset,
+                                                 std::size_t length) const {
+    std::string out;
+    out.resize(length);
+    LARGE_INTEGER pos{};
+    pos.QuadPart = static_cast<LONGLONG>(offset);
+    if (!::SetFilePointerEx(hVol, pos, nullptr, FILE_BEGIN)) {
+        return Result<std::string>::Failure(
+            MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError(), "volume: seek failed"));
+    }
+    DWORD read = 0;
+    if (!::ReadFile(hVol, out.data(), static_cast<DWORD>(length), &read, nullptr) ||
+        read != length) {
+        return Result<std::string>::Failure(
+            MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError(), "volume: read failed"));
+    }
+    return Result<std::string>::Success(std::move(out));
+}
+
 Result<std::string> RealNtfsBackend::ReadMftRange(HANDLE hVol, const std::vector<Extent>& runs,
                                                   std::uint32_t bytesPerCluster,
                                                   std::uint64_t offset, std::size_t length) const {
-    std::string out;
-    out.resize(length);
-    std::size_t done = 0;
-    while (done < length) {
-        const std::uint64_t vcnOffset = offset + done;
-        const std::uint64_t vcn = vcnOffset / bytesPerCluster;
-        const std::uint64_t within = vcnOffset % bytesPerCluster;
-
-        const Extent* hit = nullptr;
-        for (const auto& run : runs) {
-            const std::uint64_t begin = static_cast<std::uint64_t>(run.startVcn);
-            const std::uint64_t end = begin + static_cast<std::uint64_t>(run.clusterCount);
-            if (vcn >= begin && vcn < end) {
-                hit = &run;
-                break;
-            }
-        }
-        if (hit == nullptr) {
-            return Result<std::string>::Failure(
-                MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, 0, "mft: run list does not cover the table"));
-        }
-
-        const std::uint64_t clustersLeft =
-            static_cast<std::uint64_t>(hit->startVcn) + static_cast<std::uint64_t>(hit->clusterCount) - vcn;
-        const std::uint64_t bytesLeftInRun = clustersLeft * bytesPerCluster - within;
-        const std::size_t want = static_cast<std::size_t>(
-            std::min<std::uint64_t>(bytesLeftInRun, static_cast<std::uint64_t>(length - done)));
-
-        const std::uint64_t lcn = static_cast<std::uint64_t>(hit->startLcn) + (vcn - hit->startVcn);
-        const std::uint64_t physical = lcn * bytesPerCluster + within;
-
-        LARGE_INTEGER pos{};
-        pos.QuadPart = static_cast<LONGLONG>(physical);
-        if (!::SetFilePointerEx(hVol, pos, nullptr, FILE_BEGIN)) {
-            return Result<std::string>::Failure(
-                MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError(), "mft: seek failed"));
-        }
-        DWORD read = 0;
-        if (!::ReadFile(hVol, out.data() + done, static_cast<DWORD>(want), &read, nullptr) ||
-            read != want) {
-            return Result<std::string>::Failure(
-                MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError(), "mft: read failed"));
-        }
-        done += want;
-    }
-    return Result<std::string>::Success(std::move(out));
+    // The mapping from stream offsets to physical ones lives in the portable MFT
+    // module, where a fragmented table is covered by a test. This function is only
+    // the Win32 read.
+    auto readAt = [this, hVol](std::uint64_t volumeOffset, std::size_t want) {
+        return ReadVolumeAt(hVol, volumeOffset, want);
+    };
+    return mft::ReadStreamRange(runs, bytesPerCluster, offset, length, readAt);
 }
 
 Result<std::vector<FileEntry>> RealNtfsBackend::EnumerateViaMft(std::uint64_t maxFiles) {
@@ -676,41 +656,61 @@ Result<std::vector<FileEntry>> RealNtfsBackend::EnumerateViaMft(std::uint64_t ma
             MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, 0, "mft: geometry does not describe the table"));
     }
 
-    // $MFT is file 0. Its own run list says where its clusters really are; the
-    // geometry only gives the start LCN, which is enough to bootstrap but not to
-    // read a fragmented table.
-    UniqueHandle hMft = OpenFileByReference(0, FILE_READ_ATTRIBUTES | FILE_READ_DATA);
-    if (!hMft.Valid()) {
-        return Result<std::vector<FileEntry>>::Failure(MakeError(
-            ErrorCode::E_ENUM_ACCESS_DENIED, volumeId_, 0, ::GetLastError(), "mft: cannot open $MFT"));
-    }
-    auto runsRes = ReadRetrievalPointers(hMft.Get());
-    if (!runsRes || runsRes.Value().empty()) {
-        return Result<std::vector<FileEntry>>::Failure(MakeError(
-            ErrorCode::E_ENUM_IO, volumeId_, 0, 0, "mft: cannot read the $MFT run list"));
-    }
-    const std::vector<Extent> runs = runsRes.Value();
-
     UniqueHandle hVol = OpenVolumeHandle(FILE_READ_ATTRIBUTES | FILE_READ_DATA);
     if (!hVol.Valid()) {
         return Result<std::vector<FileEntry>>::Failure(
             MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError()));
     }
 
-    mft::RecordGeometry recGeom{};
-    recGeom.recordSize = geom.bytesPerFileRecordSegment;
-    recGeom.bytesPerCluster = geom.bytesPerCluster;
+    // Bootstrap: $MFT cannot be opened as "file 0".
+    //
+    // OpenFileById with a FileIdType descriptor of 0 is rejected with
+    // ERROR_INVALID_PARAMETER (err=87) - that is exactly what the first run on a
+    // real volume reported ("OpenFileById failed id=0 ref=0 tries=1 access=129
+    // err=87"). Record 0 sits at MftStartLcn by definition, so it is read
+    // straight off the volume and its own $DATA run list says where the rest of
+    // the table is. This also removes the last OpenFileById from the fast path.
+    const std::uint32_t bytesPerCluster = geom.bytesPerCluster;
+    std::vector<Extent> runs;
+    const mft::RecordGeometry recordGeom{geom.bytesPerFileRecordSegment, bytesPerCluster};
+    {
+        auto firstRecord =
+            ReadVolumeAt(hVol.Get(), static_cast<std::uint64_t>(geom.mftStartLcn) * bytesPerCluster,
+                         geom.bytesPerFileRecordSegment);
+        if (firstRecord) {
+            auto parsed = mft::ParseRecord(firstRecord.Value(), 0, recordGeom);
+            if (parsed && !parsed.Value().extents.empty()) {
+                runs = parsed.Value().extents;
+                if (runs.front().startLcn != geom.mftStartLcn) {
+                    // Only informational: the record is authoritative, the
+                    // geometry field is not always filled in on every driver.
+                    mediaDetector_.NoteProbe("MftStartLcnMismatch geom=" +
+                                             std::to_string(geom.mftStartLcn) +
+                                             " record=" + std::to_string(runs.front().startLcn));
+                }
+            } else {
+                mediaDetector_.NoteProbe("MftRecord0Unparsed, cannot bootstrap the table");
+            }
+        } else {
+            mediaDetector_.NoteProbe("MftRecord0Unreadable: " + firstRecord.Error().diagnosticDetail);
+        }
+    }
+    if (runs.empty()) {
+        return Result<std::vector<FileEntry>>::Failure(MakeError(
+            ErrorCode::E_ENUM_IO, volumeId_, 0, 0,
+            "mft: cannot locate the $MFT run list from record 0"));
+    }
+
 
     const std::function<void(std::uint64_t)> progress = scanProgressCb_;
     const std::vector<Extent> mftRuns = runs;
     const HANDLE volHandle = hVol.Get();
-    const std::uint32_t bytesPerCluster = geom.bytesPerCluster;
 
     auto reader = [this, volHandle, mftRuns, bytesPerCluster](std::uint64_t offset, std::size_t length) {
         return ReadMftRange(volHandle, mftRuns, bytesPerCluster, offset, length);
     };
 
-    auto scanRes = mft::ScanMft(geom.mftValidDataLength, recGeom, reader, maxFiles, progress);
+    auto scanRes = mft::ScanMft(geom.mftValidDataLength, recordGeom, reader, maxFiles, progress);
     if (!scanRes) {
         mediaDetector_.NoteProbe(std::string("MftScanFailed: ") +
                                  std::string(scanRes.Error().diagnosticDetail));

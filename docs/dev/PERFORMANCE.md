@@ -189,6 +189,35 @@ auralite-cli analyze --volume D:
 The `Files:` and `Extents:` lines must match to the unit. `auto` (the default)
 is `mft` with a fallback to `handles`.
 
+### 7. `$MFT` cannot be opened as "file 0"
+
+The first run of the fast path on the reference volume failed like this:
+
+```
+OpenFileById failed id=0 ref=0 tries=1 access=129 err=87
+Access was denied to one or more locked files; affected items were skipped. (E_ENUM_ACCESS_DENIED)
+```
+
+`err=87` is `ERROR_INVALID_PARAMETER`, not a rights problem: `OpenFileById` with a
+`FileIdType` descriptor of 0 is rejected outright. The table therefore cannot be
+opened the way every other file is.
+
+Record 0 sits at `MftStartLcn` by definition, so the bootstrap reads those 1024
+bytes straight off the volume and takes `$MFT`'s run list from its own `$DATA`
+attribute. Everything after that is arithmetic. Two consequences worth keeping in
+mind:
+
+* the fast path now contains no `OpenFileById` at all, so it cannot be blocked by
+  a file being held open;
+* `$MFT` may be fragmented, so stream offsets are mapped through the run list
+  (`mft::ReadStreamRange`) rather than assuming one contiguous span. Reading a
+  fragmented table as contiguous would misparse records silently, which is why
+  that mapping is portable code with its own test against a two-fragment table.
+
+`TestMftBootstrapFromRecordZero` builds a 64-cluster volume, places record 0 at
+LCN 4 and the rest of the table at LCN 9, and checks that the scan returns all
+four records in order across the gap.
+
 ## What is still open
 
 | Item | Blocked by |
