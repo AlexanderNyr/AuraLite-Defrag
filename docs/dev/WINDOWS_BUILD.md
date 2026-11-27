@@ -134,6 +134,23 @@ If a legitimate case appears, use the `_s` variant or the Win32 API rather than
 silencing the scan. `tools/` and `tests/` are not scanned: a benchmark parsing
 argv with `atoi` is not the same risk as a filesystem backend doing it.
 
+### 2b. The same trap, second form: C4456 (shadowed local)
+
+```
+ntfs_backend.cpp(977,41): warning C4456: declaration "lock" hides previous local declaration
+ntfs_backend.cpp(932,21): note: see declaration of "lock"
+```
+
+A second `std::lock_guard lock(probeMutex_)` inside `MoveExtent`, where
+`lock_guard lock(moveMutex_)` was already in scope at the top of the function.
+MSVC treats it as an error, mingw does not warn about it, so `make wincheck` said
+PASS and the Windows build stopped again - the failure mode is the same as the
+C4996 one, from a different warning family.
+
+`win32_syntax_check.py` now passes `-Wshadow=local` (the gcc equivalent of
+C4456/C4457) and **promotes any shadow warning to a failure**, even though gcc
+merely warns. Every Windows-only TU is clean under it.
+
 ## 3. Build
 
 ```powershell

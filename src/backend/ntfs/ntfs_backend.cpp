@@ -974,7 +974,11 @@ MoveResult RealNtfsBackend::MoveExtent(FileId fileId, Vcn startVcn, Lcn targetLc
         // Bounded: the engine retries, so an unbounded probe log would grow with
         // the number of attempts rather than the number of files.
         {
-            std::lock_guard<std::mutex> lock(probeMutex_);
+            // Named, not `lock`: the enclosing MoveExtent already holds a
+            // `lock_guard lock(moveMutex_)`, and MSVC rejects the shadowing with
+            // C4456, which is an error in this build (the first attempt died here
+            // after passing the mingw type check).
+            std::lock_guard<std::mutex> probeLock(probeMutex_);
             if (moveProbeFailures_ < 3) {
                 mediaDetector_.NoteProbe("MoveFileFailed id=" + std::to_string(fileId) +
                                          " vcn=" + std::to_string(startVcn) +

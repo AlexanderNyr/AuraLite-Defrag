@@ -55,6 +55,11 @@ COMPAT_DEFINES = [
 ]
 
 FLAGS = ["-std=c++20", "-fsyntax-only", "-Wall", "-Wextra", "-Wno-unknown-pragmas"]
+# MSVC's C4456 (a local declaration hiding another local) is an *error* in this
+# build, and mingw does not warn about it by default: a shadowed `lock` in
+# MoveExtent reached the Windows machine and stopped the build after this check
+# had reported PASS. -Wshadow=local is the closest gcc equivalent of C4456/C4457.
+SHADOW_FLAGS = ["-Wshadow=local"]
 
 # CRT entry points MSVC deprecates with C4996 ("This function or variable may be
 # unsafe"). The Windows build treats C4996 as an error, and mingw does not warn
@@ -108,10 +113,13 @@ def main(argv: list[str]) -> int:
         if not path.exists():
             failures.append((tu, "file missing"))
             continue
-        cmd = [CXX, *FLAGS, *COMPAT_DEFINES, "-I", str(root / "src"), str(path)]
+        cmd = [CXX, *FLAGS, *SHADOW_FLAGS, *COMPAT_DEFINES, "-I", str(root / "src"), str(path)]
         proc = subprocess.run(cmd, capture_output=True, text=True)
-        if proc.returncode != 0:
-            errs = [ln for ln in proc.stderr.splitlines() if "error" in ln]
+        # Shadowing is promoted to a failure even though gcc only warns: MSVC
+        # treats C4456 as an error, so a warning here means a broken Windows build.
+        shadow = [ln for ln in proc.stderr.splitlines() if "[-Wshadow" in ln]
+        if proc.returncode != 0 or shadow:
+            errs = [ln for ln in proc.stderr.splitlines() if "error" in ln or "[-Wshadow" in ln]
             failures.append((tu, "\n".join(errs[:10]) or "unknown failure"))
         elif not quiet:
             print(f"OK   {tu}")
