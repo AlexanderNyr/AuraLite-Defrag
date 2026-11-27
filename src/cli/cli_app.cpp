@@ -580,6 +580,12 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
         for (const auto& step : volPtr->Evidence().probeLog) {
             if (step.rfind("Mft", 0) == 0) err << "Scan: " << step << "\n";
         }
+        // Say when an earlier operation's journal was archived: it is the only
+        // trace of the previous run, and the operator should know where it went.
+        if (!journal.RotationNote().empty()) {
+            err << "Note: the journal from an earlier operation was archived (" <<
+                   journal.RotationNote() << "), a new one was started.\n";
+        }
         if (opts.maxScanFiles > 0) {
             // A sample must never be mistaken for the volume. The figures above are
             // real, but they describe N files, not D:.
@@ -600,6 +606,21 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
                 << " file(s) could not be read, so the fragmentation figures above\n"
                 << "do not cover them. Probe trace:\n";
             for (const auto& step : volPtr->Evidence().probeLog) err << "  - " << step << "\n";
+        }
+        // Why files were left alone. A plan that selects nothing used to print
+        // "Moves completed: 0 | Skipped: 0", which reads as "nothing to do"; the
+        // real answer is usually "no contiguous free run large enough".
+        if (!opRes.Value().planSkips.empty()) {
+            err << "Plan: " << opRes.Value().planSkips.size()
+                << " file(s) selected for work but dropped before moving:\n";
+            std::size_t shown = 0;
+            for (const auto& skip : opRes.Value().planSkips) {
+                if (shown++ >= 5) {
+                    err << "  ... and " << (opRes.Value().planSkips.size() - 5) << " more\n";
+                    break;
+                }
+                err << "  - " << skip.fileName << ": " << SkipReasonName(skip.reason) << "\n";
+            }
         }
         if (opts.verb == "mft" && opts.mftTier == 3) {
             out << StringTable::Lookup("IDS_MFT_TIER3_REPORT_ONLY") << "\n"

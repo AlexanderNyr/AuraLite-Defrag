@@ -55,6 +55,9 @@ private:
     // NoteProbe/openFailures_ are written from the layout workers; the probe log
     // is a plain vector and would otherwise be corrupted by concurrent pushes.
     mutable std::mutex probeMutex_;
+    // Bounded probe output for moves: a volume that refuses every FSCTL_MOVE_FILE
+    // must not turn the trace into a per-file log.
+    mutable std::uint64_t moveProbeFailures_{0};
     // protectClusters applies FSCTL_MARK_HANDLE/MARK_HANDLE_PROTECT_CLUSTERS. Only
     // a handle that is about to be moved needs it: applying it during read-only
     // analysis is an unrequested side effect on every file (P9-T02 F-03).

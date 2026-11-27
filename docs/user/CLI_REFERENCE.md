@@ -93,6 +93,17 @@ auralite-cli analyze --volume D: --format json
 
 `--format json` emits a machine-readable summary suitable for monitoring.
 
+When a plan selects files but cannot place them, the run says so instead of
+reporting zeros:
+
+```
+Plan: 3 file(s) selected for work but dropped before moving:
+  - data.vhdx: InsufficientContiguousSpace
+```
+
+`InsufficientContiguousSpace` is the common one on a crowded volume: the file
+needs its whole size in *one* free run, and no run that large exists.
+
 
 ### Choosing how the volume is scanned
 

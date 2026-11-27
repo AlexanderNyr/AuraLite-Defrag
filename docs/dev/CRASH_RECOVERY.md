@@ -2,6 +2,27 @@
 
 Covers **P9-T03** (R-079, R-083).
 
+
+## A journal from an earlier operation
+
+The journal file lives in `%TEMP%` under a per-volume name, and until recently it
+was never cleaned up, so the *second* operation on a volume found a file whose
+plan hash could not match and refused to start with
+`E_JOURNAL_PLAN_HASH_MISMATCH` — before touching a single cluster. On a real
+machine that reads as "the defragmenter stopped working after the first run".
+
+`OpenOrCreate` now distinguishes the two cases it used to conflate:
+
+| Existing journal | Behaviour |
+|---|---|
+| same volume serial **and** same plan hash | resume; this is the crash-recovery path and stays strict |
+| different plan, or different volume serial | the old file is **renamed to `<name>.prev`** and a new operation starts |
+
+Nothing is deleted: a `.prev` file is the only record of what the previous run
+did, and a resume that still wants it never takes the rotation branch. The CLI
+prints one line when this happens, because silently moving the evidence aside
+would be the same mistake in the other direction.
+
 ## What is actually tested
 
 The existing `TestJournalCrashRecovery200Trials` in `tests/unit/test_main.cpp`

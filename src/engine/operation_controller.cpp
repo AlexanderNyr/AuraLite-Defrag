@@ -251,6 +251,7 @@ Result<ExecutionOutcome> OperationController::RunOperation(IVolumeProvider& volu
         return Result<ExecutionOutcome>::Failure(planRes.Error());
     }
 
+    const std::vector<SkippedPlanItem> plannedSkips = planRes.Value().skipped;
     state_.store(OperationState::Defragmenting, std::memory_order_release);
     OnlineMode executor(volume, fs, policy_, logger_, isElevated, policy_.Config().verifyChecksumsSample);
     auto execRes = executor.ExecuteWithOutcome(planRes.Value(), sink, journal, token, nullptr);
@@ -260,6 +261,7 @@ Result<ExecutionOutcome> OperationController::RunOperation(IVolumeProvider& volu
         return Result<ExecutionOutcome>::Failure(execRes.Error());
     }
 
+    execRes.Value().planSkips = plannedSkips;
     if (outAfterSnapshot && !options.dryRun) {
         state_.store(OperationState::Idle, std::memory_order_release);
         auto afterRes = Analyze(volume, fs, sink, token, options.maxScanFiles);

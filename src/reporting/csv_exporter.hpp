@@ -11,6 +11,10 @@
 
 namespace auralite {
 
+// Human/machine-stable name of a skip reason, shared by the CSV skip report and
+// the CLI summary so the two cannot disagree.
+const char* SkipReasonName(SkipReason r) noexcept;
+
 class CsvExporter {
 public:
     static std::string EscapeField(std::string_view value);

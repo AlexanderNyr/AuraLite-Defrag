@@ -22,6 +22,12 @@ struct ExecutionOutcome {
     ClusterCount clustersMoved{0};
     std::uint64_t bytesMoved{0};
     std::vector<SkippedPlanItem> runtimeSkips;
+    // Files the planner dropped before any move was attempted (no contiguous free
+    // run large enough, exclusion, metadata...). Without these a plan that selects
+    // nothing reports "Moves completed: 0 | Skipped: 0", which reads as "there was
+    // nothing to do" rather than "this file needed 40 MB of contiguous free space
+    // and the volume does not have it".
+    std::vector<SkippedPlanItem> planSkips;
 };
 
 } // namespace auralite

@@ -909,7 +909,13 @@ Result<std::vector<FileEntry>> RealNtfsBackend::Enumerate(std::uint64_t maxFiles
 }
 
 Result<std::vector<Extent>> RealNtfsBackend::Extents(FileId fileId) {
-    UniqueHandle hf = OpenFileByReference(fileId, FILE_READ_ATTRIBUTES);
+    // FILE_READ_DATA, not FILE_READ_ATTRIBUTES. FSCTL_GET_RETRIEVAL_POINTERS is
+    // issued on this handle and refuses to run without it, so an attribute-only
+    // handle made every post-move verification fail with E_VERIFY_READBACK_FAILED
+    // on a volume where the move itself had succeeded. This is the same trap that
+    // was already fixed once in the enumeration path; the verification path kept a
+    // copy of it.
+    UniqueHandle hf = OpenFileByReference(fileId, FILE_READ_ATTRIBUTES | FILE_READ_DATA);
     if (!hf.Valid()) {
         return Result<std::vector<Extent>>::Failure(MakeError(ErrorCode::E_MOVE_ACCESS_DENIED, volumeId_, fileId, ::GetLastError()));
     }
@@ -929,10 +935,31 @@ MoveResult RealNtfsBackend::MoveExtent(FileId fileId, Vcn startVcn, Lcn targetLc
         return {false, 0, ::GetLastError(), static_cast<std::uint32_t>(ErrorCode::E_MOVE_ACCESS_DENIED), false, SkipReason::AccessDenied};
     }
 
-    UniqueHandle hFile = OpenFileByReference(fileId, FILE_READ_ATTRIBUTES, /*protectClusters=*/true);
+    // FSCTL_MOVE_FILE needs the file itself opened for reading and writing data.
+    // An attributes-only handle is rejected by the volume before any cluster is
+    // touched (the first real-volume attempt failed here), and the move path had
+    // inherited the read-only access mask from the analysis path.
+    UniqueHandle hFile = OpenFileByReference(fileId, FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES,
+                                             /*protectClusters=*/true);
     if (!hFile.Valid()) {
         const DWORD err = ::GetLastError();
+        mediaDetector_.NoteProbe("MoveOpenFailed id=" + std::to_string(fileId) +
+                                 " err=" + std::to_string(err));
         return {false, 0, err, static_cast<std::uint32_t>(MapWin32ToMoveError(err)), false, SkipReason::AccessDenied};
+    }
+
+    // The caller names the VCN and the destination; the source LCN is only known
+    // to the volume. It is read here so a failed move can be reported in terms of
+    // both ends (src -> dst) instead of a VCN that means nothing to an operator.
+    Lcn sourceLcnForProbe = kInvalidLcn;
+    if (auto extRes = ReadRetrievalPointers(hFile.Get())) {
+        for (const auto& e : extRes.Value()) {
+            const Vcn end = e.startVcn + e.clusterCount;
+            if (startVcn >= e.startVcn && startVcn < end) {
+                sourceLcnForProbe = e.startLcn + (startVcn - e.startVcn);
+                break;
+            }
+        }
     }
 
     MOVE_FILE_DATA mfd{};
@@ -944,6 +971,20 @@ MoveResult RealNtfsBackend::MoveExtent(FileId fileId, Vcn startVcn, Lcn targetLc
     DWORD bytesRet = 0;
     if (!::DeviceIoControl(hVol.Get(), FSCTL_MOVE_FILE, &mfd, sizeof(mfd), nullptr, 0, &bytesRet, nullptr)) {
         const DWORD err = ::GetLastError();
+        // Bounded: the engine retries, so an unbounded probe log would grow with
+        // the number of attempts rather than the number of files.
+        {
+            std::lock_guard<std::mutex> lock(probeMutex_);
+            if (moveProbeFailures_ < 3) {
+                mediaDetector_.NoteProbe("MoveFileFailed id=" + std::to_string(fileId) +
+                                         " vcn=" + std::to_string(startVcn) +
+                                         " src=" + std::to_string(sourceLcnForProbe) +
+                                         " dst=" + std::to_string(targetLcn) +
+                                         " clusters=" + std::to_string(clusters) +
+                                         " err=" + std::to_string(err));
+            }
+            ++moveProbeFailures_;
+        }
         const ErrorCode ec = MapWin32ToMoveError(err);
         return {false, 0, err, static_cast<std::uint32_t>(ec), false, DescribeError(ec).retryable ? SkipReason::StaleBitmapConflict : SkipReason::AccessDenied};
     }

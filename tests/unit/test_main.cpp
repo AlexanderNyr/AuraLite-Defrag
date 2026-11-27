@@ -1466,6 +1466,250 @@ void TestMftBootstrapFromRecordZero() {
     CHECK(!mft::ReadStreamRange(runs, 0, 0, 16, readAt).Ok());
 }
 
+
+// Single-file defrag, end to end: plan -> journal -> move -> verify -> snapshot.
+//
+// This is the flow the first real-volume run takes (`file --target <path>`), and
+// it had never been executed as a whole: the planner test only checked which
+// files get selected, and the crash campaign only ran whole-volume defrags.
+//
+// Two defects lived in that gap, both invisible to every existing test because
+// the emulator does not model access masks: `Extents()` opened the file with
+// FILE_READ_ATTRIBUTES only, so post-move verification would have failed on a
+// volume where the move succeeded, and `MoveExtent()` used the same read-only
+// mask for the handle FSCTL_MOVE_FILE operates on. The masks are checked by
+// review now; what this test locks down is the surrounding contract.
+void TestSingleTargetDefragEndToEnd() {
+    ScenarioSpec sc{};
+    sc.id = "TARGET-1";
+    sc.seed = 4242;
+    sc.clusters = 4096;
+    sc.fileCount = 40;
+    sc.extentsPerFile = 3;
+    sc.sizeMinClusters = 6;
+    sc.sizeMaxClusters = 12;
+    sc.freeTargetPct = 40.0;
+
+    auto emuRes = BuildEmulatorFromScenario(sc);
+    CHECK(emuRes.Ok());
+    auto& emu = *emuRes.Value();
+
+    PolicyGate policy;
+    StructuredLogger logger;
+    NullProgressSink sink;
+    OperationController ctrl(policy, logger);
+    CancelToken tok;
+
+    auto snapRes = ctrl.Analyze(emu, emu, sink, tok);
+    CHECK(snapRes.Ok());
+    const AnalysisSnapshot before = snapRes.Value();
+
+    FileId target = kInvalidFileId;
+    std::uint32_t extentCount = 0;
+    FileId neighbour = kInvalidFileId;
+    std::vector<Extent> neighbourExtents;
+    std::vector<Extent> targetExtents;
+    for (const auto& f : before.files) {
+        if (f.flags.isDirectory || f.flags.isMetadata || f.flags.isLocked || f.extents.empty()) continue;
+        if (target == kInvalidFileId) {
+            if (f.fragmentCount < 2) continue;
+            target = f.id;
+            extentCount = f.fragmentCount;
+            targetExtents = f.extents;
+        } else if (f.fragmentCount >= 1) {
+            neighbour = f.id;
+            neighbourExtents = f.extents;
+            break;
+        }
+    }
+    CHECK(target != kInvalidFileId);
+    CHECK(extentCount >= 2);
+
+    PlanOptions opts{};
+    opts.mode = DefragMode::SingleFileOrFolder;
+    opts.targetFileIds = {target};
+
+    const auto jPath = TempTestDir() / "single_target.journal";
+    std::filesystem::remove(jPath);
+    BinaryJournal journal(jPath);
+
+    AnalysisSnapshot beforeSnap{};
+    AnalysisSnapshot afterSnap{};
+    auto r = ctrl.RunOperation(emu, emu, opts, sink, journal, tok, true, &beforeSnap, &afterSnap);
+    CHECK(r.Ok());
+
+    // One move per extent, each verified: the whole point of the verb.
+    CHECK(r.Value().stepsCompleted == extentCount);
+    CHECK(r.Value().stepsVerified == extentCount);
+    CHECK(r.Value().stepsSkipped == 0);
+    CHECK(r.Value().clustersMoved > 0);
+
+    // The file is contiguous afterwards and still the same size.
+    const FileEntry* after = nullptr;
+    for (const auto& f : afterSnap.files) {
+        if (f.id == target) after = &f;
+    }
+    CHECK(after != nullptr);
+    if (after != nullptr) {
+        CHECK(after->fragmentCount == 1);
+        CHECK(after->extents.size() == 1);
+        ClusterCount totalBefore = 0;
+        for (const auto& e : targetExtents) totalBefore += e.clusterCount;
+        CHECK(after->allocatedClusters == totalBefore);
+    }
+
+    // Nothing else was touched: a single-file operation must not move a byte of
+    // any other file, which is the promise `--target` makes to the operator.
+    for (const auto& f : afterSnap.files) {
+        if (f.id != neighbour) continue;
+        CHECK(f.extents.size() == neighbourExtents.size());
+        const std::size_t n = std::min(f.extents.size(), neighbourExtents.size());
+        for (std::size_t i = 0; i < n; ++i) {
+            CHECK(f.extents[i].startVcn == neighbourExtents[i].startVcn);
+            CHECK(f.extents[i].startLcn == neighbourExtents[i].startLcn);
+            CHECK(f.extents[i].clusterCount == neighbourExtents[i].clusterCount);
+        }
+    }
+
+    // A file that is already contiguous produces no moves at all, and the command
+    // still succeeds - that is what makes it safe to re-run.
+    if (after != nullptr) {
+        PlanOptions again{};
+        again.mode = DefragMode::SingleFileOrFolder;
+        again.targetFileIds = {target};
+        CancelToken tok2;
+        auto r2 = ctrl.RunOperation(emu, emu, again, sink, journal, tok2, true);
+        CHECK(r2.Ok());
+        CHECK(r2.Value().stepsCompleted == 0);
+    }
+}
+
+
+// A journal from an earlier operation must not block the next one.
+//
+// The journal lives in %TEMP% under a per-volume name and was never cleaned up, so
+// from the second operation onwards OpenOrCreate found a file whose plan hash
+// could not match and returned E_JOURNAL_PLAN_HASH_MISMATCH - before touching a
+// single cluster. On a real machine that reads as "the defragmenter stopped
+// working after the first run". The old file is archived instead, never deleted.
+void TestJournalRotationBetweenRuns() {
+    const auto dir = TempTestDir() / "journal_rotation";
+    std::filesystem::create_directories(dir);
+    const auto jPath = dir / "rot.journal";
+    std::filesystem::remove(jPath);
+    std::filesystem::remove(std::filesystem::path(jPath.string() + ".prev"));
+
+    {
+        BinaryJournal j(jPath);
+        CHECK(j.OpenOrCreate(1, 0xAABBCCDDULL, 0x1111ULL).Ok());
+        JournalRecord rec{};
+        rec.sequence = 1;
+        rec.opId = 1;
+        rec.type = JournalRecordType::PlanBegin;
+        rec.planHash = 0x1111ULL;
+        rec.volumeSerial = 0xAABBCCDDULL;
+        CHECK(j.Append(rec, true).Ok());
+        CHECK(j.Seal().Ok());
+        CHECK(j.RotationNote().empty());
+    }
+
+    // A different plan: archive and start fresh.
+    {
+        BinaryJournal j(jPath);
+        CHECK(j.OpenOrCreate(2, 0xAABBCCDDULL, 0x2222ULL).Ok());
+        CHECK(!j.RotationNote().empty());
+        CHECK(std::filesystem::exists(std::filesystem::path(jPath.string() + ".prev")));
+        CHECK(j.Seal().Ok());
+    }
+
+    // A different volume serial (the volume was recreated) is handled the same way.
+    {
+        BinaryJournal j(jPath);
+        CHECK(j.OpenOrCreate(3, 0x11223344ULL, 0x3333ULL).Ok());
+        CHECK(!j.RotationNote().empty());
+    }
+
+    // The same plan still resumes rather than rotating: a crash must stay
+    // recoverable, and that is the case the strict check exists for.
+    {
+        std::filesystem::remove(jPath);
+        std::filesystem::remove(std::filesystem::path(jPath.string() + ".prev"));
+        {
+            BinaryJournal j(jPath);
+            CHECK(j.OpenOrCreate(4, 0x55ULL, 0x99ULL).Ok());
+        }
+        BinaryJournal j(jPath);
+        CHECK(j.OpenOrCreate(4, 0x55ULL, 0x99ULL).Ok());
+        CHECK(j.RotationNote().empty());
+    }
+}
+
+
+// "Nothing moved" must always come with a reason.
+//
+// A plan that selects a file and then cannot place it (no contiguous free run, an
+// exclusion, a metadata file) used to vanish: the run printed "Moves completed: 0
+// | Skipped: 0", which reads as "there was nothing to do". On a crowded volume
+// that is the normal outcome for every large file, so the operator needs the
+// reason on screen.
+void TestPlanSkipsAreReported() {
+    ScenarioSpec sc{};
+    sc.id = "CROWDED";
+    sc.seed = 777;
+    sc.clusters = 2048;
+    sc.fileCount = 60;
+    sc.extentsPerFile = 3;
+    sc.sizeMinClusters = 20;
+    sc.sizeMaxClusters = 60;
+    sc.freeTargetPct = 3.0; // deliberately almost full
+
+    auto emuRes = BuildEmulatorFromScenario(sc);
+    CHECK(emuRes.Ok());
+    auto& emu = *emuRes.Value();
+
+    PolicyGate policy;
+    StructuredLogger logger;
+    NullProgressSink sink;
+    OperationController ctrl(policy, logger);
+    CancelToken tok;
+
+    auto snapRes = ctrl.Analyze(emu, emu, sink, tok);
+    CHECK(snapRes.Ok());
+    const AnalysisSnapshot snap = snapRes.Value();
+
+    // The largest fragmented file is the one least likely to find room.
+    FileId target = kInvalidFileId;
+    ClusterCount biggest = 0;
+    for (const auto& f : snap.files) {
+        if (f.flags.isDirectory || f.flags.isMetadata || f.flags.isLocked) continue;
+        if (f.fragmentCount < 2 || f.extents.empty()) continue;
+        if (f.allocatedClusters > biggest) {
+            biggest = f.allocatedClusters;
+            target = f.id;
+        }
+    }
+    CHECK(target != kInvalidFileId);
+
+    PlanOptions opts{};
+    opts.mode = DefragMode::SingleFileOrFolder;
+    opts.targetFileIds = {target};
+
+    BinaryJournal journal(TempTestDir() / "plan_skips.journal");
+    std::filesystem::remove(journal.Path());
+    auto r = ctrl.RunOperation(emu, emu, opts, sink, journal, tok, true);
+    CHECK(r.Ok());
+    const auto& outcome = r.Value();
+
+    // The invariant: either something moved, or the plan explains itself.
+    if (outcome.stepsCompleted == 0) {
+        CHECK(!outcome.planSkips.empty());
+        CHECK(!outcome.planSkips.front().fileName.empty());
+        CHECK(outcome.planSkips.front().reason != SkipReason::None);
+    } else {
+        CHECK(outcome.planSkips.empty());
+    }
+}
+
 } // namespace
 
 int main() {
@@ -1481,6 +1725,9 @@ int main() {
     RUN_TEST(TestAll20Scenarios);
     RUN_TEST(TestCsvInjectionSafetyAndStatistics);
     RUN_TEST(TestPathScopeAndTargetConfinement);
+    RUN_TEST(TestSingleTargetDefragEndToEnd);
+    RUN_TEST(TestJournalRotationBetweenRuns);
+    RUN_TEST(TestPlanSkipsAreReported);
     RUN_TEST(TestScanProgressReporting);
     RUN_TEST(TestExtentCensusClassification);
     RUN_TEST(TestPathCompositionFromUsn);

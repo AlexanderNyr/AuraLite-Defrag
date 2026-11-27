@@ -21,6 +21,10 @@ const char* FileStateName(FileState st) noexcept {
     return "Ready";
 }
 
+} // namespace
+
+// Exported (see the header): the CLI prints the same names the CSV skip report
+// uses, so an operator comparing the two never sees two vocabularies.
 const char* SkipReasonName(SkipReason r) noexcept {
     switch (r) {
         case SkipReason::None: return "None";
@@ -39,6 +43,8 @@ const char* SkipReasonName(SkipReason r) noexcept {
     }
     return "None";
 }
+
+namespace {
 
 bool NeedsFormulaNeutralization(std::string_view v) noexcept {
     if (v.empty()) return false;

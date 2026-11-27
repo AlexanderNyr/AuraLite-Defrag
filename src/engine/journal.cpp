@@ -186,6 +186,29 @@ Result<Checkpoint> BinaryJournal::ReadBestHeader(std::uint32_t& outSlot) const {
     return Result<Checkpoint>::Success(cp1);
 }
 
+Result<void> BinaryJournal::RotateAside(const std::string& reason) {
+    if (stream_.is_open()) {
+        stream_.flush();
+        stream_.close();
+    }
+    std::error_code ec;
+    std::filesystem::path archived = filePath_;
+    archived += ".prev";
+    // A previous archive is replaced: only the most recent one is of any use, and
+    // keeping a growing pile of them in %TEMP% is not a feature.
+    std::filesystem::remove(archived, ec);
+    std::filesystem::rename(filePath_, archived, ec);
+    if (ec) {
+        return Result<void>::Failure(MakeError(ErrorCode::E_JOURNAL_IO));
+    }
+    rotationNote_ = reason;
+    current_ = Checkpoint{};
+    activeSlot_ = 0;
+    writeOffset_ = kDataStartOffset;
+    isOpen_ = false;
+    return Result<void>::Success();
+}
+
 Result<void> BinaryJournal::OpenOrCreate(std::uint64_t opId, std::uint64_t volumeSerial, std::uint64_t planHash) {
     std::error_code ec;
     if (filePath_.has_parent_path()) {
@@ -204,12 +227,22 @@ Result<void> BinaryJournal::OpenOrCreate(std::uint64_t opId, std::uint64_t volum
         std::uint32_t slot = 0;
         auto hdr = ReadBestHeader(slot);
         if (!hdr) return Result<void>::Failure(hdr.Error());
-        if (hdr.Value().volumeSerial != volumeSerial) {
-            return Result<void>::Failure(MakeError(ErrorCode::E_JOURNAL_SERIAL_MISMATCH));
-        }
-        if (hdr.Value().planHash != planHash) {
-            return Result<void>::Failure(MakeError(ErrorCode::E_JOURNAL_PLAN_HASH_MISMATCH));
-        }
+        if (hdr.Value().volumeSerial != volumeSerial || hdr.Value().planHash != planHash) {
+            // An existing journal that does not describe this operation is the
+            // normal case on the second run, not an error: the previous operation
+            // completed (or was abandoned) and left its file behind in %TEMP%.
+            // Refusing here made every run after the first fail with
+            // E_JOURNAL_PLAN_HASH_MISMATCH before touching a single cluster.
+            //
+            // The old file is archived rather than deleted, because it is the only
+            // record of what the previous run did, and a resume that still wants it
+            // (matching plan) never reaches this branch.
+            const std::string reason = hdr.Value().volumeSerial != volumeSerial
+                                           ? "different volume serial"
+                                           : "different plan";
+            auto rotate = RotateAside(reason);
+            if (!rotate) return rotate;
+        } else {
         current_ = hdr.Value();
         activeSlot_ = slot;
 
@@ -222,6 +255,7 @@ Result<void> BinaryJournal::OpenOrCreate(std::uint64_t opId, std::uint64_t volum
         if (writeOffset_ < kDataStartOffset) writeOffset_ = kDataStartOffset;
         isOpen_ = true;
         return Result<void>::Success();
+        }
     }
 
     // Create new journal file with two header slots
