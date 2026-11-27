@@ -671,6 +671,26 @@ Result<std::vector<FileEntry>> RealNtfsBackend::EnumerateViaMft(std::uint64_t ma
             MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError()));
     }
 
+    // Flush the volume's cache first.
+    //
+    // Everything below may fall back to raw sector reads, which go straight to
+    // the disk and therefore bypass the NTFS metadata cache. Move records are
+    // exactly the kind of metadata that sits dirty in that cache for a while, so
+    // without this the analysis after a completed move can read back the layout
+    // from before it - which is what the first real operation reported (two moves
+    // completed and verified, "Fragmented: 14 -> 14", and the same two moves
+    // planned again on the next run).
+    {
+        UniqueHandle hFlush = OpenVolumeHandle(GENERIC_READ | GENERIC_WRITE);
+        if (hFlush.Valid()) {
+            if (!::FlushFileBuffers(hFlush.Get())) {
+                mediaDetector_.NoteProbe("MftScanFlushFailed err=" + std::to_string(::GetLastError()));
+            }
+        } else {
+            mediaDetector_.NoteProbe("MftScanFlushUnavailable err=" + std::to_string(::GetLastError()));
+        }
+    }
+
     // Preferred: read the table through a handle on $MFT itself.
     //
     // Raw sector reads go straight to the disk and therefore bypass the NTFS
@@ -683,6 +703,10 @@ Result<std::vector<FileEntry>> RealNtfsBackend::EnumerateViaMft(std::uint64_t ma
     // A handle could not be opened before (FileIdType 0 is rejected); the full
     // reference works, and reads through it are cache-coherent.
     UniqueHandle hMft = OpenFileByReference(kMftFileId, FILE_READ_DATA | FILE_READ_ATTRIBUTES);
+    if (!hMft.Valid()) {
+        mediaDetector_.NoteProbe("MftHandleUnavailable err=" + std::to_string(::GetLastError()) +
+                                 " - falling back to raw sector reads");
+    }
 
     // Bootstrap: $MFT cannot be opened as "file 0".
     //
@@ -967,8 +991,15 @@ MoveResult RealNtfsBackend::MoveExtent(FileId fileId, Vcn startVcn, Lcn targetLc
     // An attributes-only handle is rejected by the volume before any cluster is
     // touched (the first real-volume attempt failed here), and the move path had
     // inherited the read-only access mask from the analysis path.
+    // protectClusters is false on purpose. MARK_HANDLE_PROTECT_CLUSTERS exists to
+    // keep *other* defragmenters away from a file, and the flag is scoped to the
+    // handle: it is cleared the moment we close it a few lines below, so it bought
+    // nothing here - while the clusters it marks are, by definition, not movable
+    // by a defragmentation tool, which is us. An ioctl that returns success and
+    // moves nothing looks exactly like a completed move until the layout is read
+    // back, and that is not a risk worth taking for no benefit.
     UniqueHandle hFile = OpenFileByReference(fileId, FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES,
-                                             /*protectClusters=*/true);
+                                             /*protectClusters=*/false);
     if (!hFile.Valid()) {
         const DWORD err = ::GetLastError();
         mediaDetector_.NoteProbe("MoveOpenFailed id=" + std::to_string(fileId) +

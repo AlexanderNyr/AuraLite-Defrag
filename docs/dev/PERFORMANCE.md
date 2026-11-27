@@ -218,10 +218,9 @@ mind:
 LCN 4 and the rest of the table at LCN 9, and checks that the scan returns all
 four records in order across the gap.
 
-### 8. Raw sector reads bypass the NTFS cache
+### 8. A layout that lags behind a completed move
 
-The first real move on the reference volume reported success and changed
-nothing:
+The first real move reported success and changed nothing:
 
 ```
 [100.00%] 2/2 moves, 9,715 clusters
@@ -229,28 +228,49 @@ Moves completed: 2 | Verified: 2 | Skipped: 0
 Files: 160,148 | Fragmented: 14 -> 14
 ```
 
-Both moves were issued, both were verified against the retrieval pointers, and
-the analysis before and after is byte-identical — so the next run planned the
-same two moves again, forever.
+Four runs in a row did exactly that, each one rotating the journal with
+"different plan" - so the moves were real, the plan was new every time, and only
+the *reported* layout stayed frozen. The verification path cannot be the liar: it
+reads the file's retrieval pointers through a fresh handle, and it accepted both
+moves.
 
-The cause is the fast path itself, not the mover. Reading `$MFT` as raw sectors
-goes straight to the disk and skips the NTFS metadata cache, so a record the
-filesystem updated seconds ago still reads back with its old run list. A move
-touches exactly such a record. Reading through a handle on `$MFT` instead
-(`FileIdType` with the full reference — record 0, sequence 1 — which resolves
-even though a bare index 0 does not) goes through the cache and is always
-current. The run list is still decoded from the raw sectors when no handle can
-be opened, and the probe trace then says so:
+Two things in the fast path can produce that:
+
+1. **Raw sector reads bypass the NTFS metadata cache.** Reading `$MFT` off the
+   disk misses the update the filesystem made a second ago - and a move updates
+   exactly that record. `EnumerateViaMft` now flushes the volume
+   (`FlushFileBuffers` on a write handle) before reading the table, so the raw
+   path sees what the cache holds.
+2. **`MARK_HANDLE_PROTECT_CLUSTERS` on the move handle.** The flag exists to keep
+   *other* defragmenters off a file, it is scoped to the handle, and it was being
+   set on the handle we then hand to `FSCTL_MOVE_FILE`. Clusters marked protected
+   are by definition not movable by a defragmentation tool, which is us. It bought
+   nothing (the handle is closed immediately afterwards) and could turn a move into
+   a successful no-op. The move handle no longer sets it.
+
+Reading through a handle on `$MFT` is still tried first - `FileIdType` rejects a
+bare index 0, but the full reference (record 0, sequence 1) resolves - with the
+raw path as fallback, and the probe trace now names which one ran:
 
 ```
-MftScan via $MFT handle (cache-coherent)
-MftScan via raw volume reads (may lag behind the cache)
+Scan: MftScan via $MFT handle (cache-coherent)
+Scan: MftScan via raw volume reads (may lag behind the cache)
+Scan: MftScanFlushFailed err=5
 ```
 
-Two guards came out of it: `MoveExtent` refuses a move whose target equals the
-extent's current LCN (it would "succeed" and change nothing), and the plan's skip
-report is scoped to the mode, so a single-file operation no longer lists `$MFT`
-and 155 other files that were never part of the question.
+Two more guards came out of it: `MoveExtent` refuses a move whose target equals
+the extent's current LCN, and a single-target operation now prints the file's own
+layout, read live after the operation:
+
+```
+Target: dsymutil: 2 extent(s) before -> 1 extent(s) now (live read)
+  vcn 0 + 7568 @ lcn 1234567
+  vcn 7568 + 2147 @ lcn 1250000
+```
+
+That line is ground truth. If it says one extent while the census above still
+counts two, the analysis is what is broken, not the mover - and the emulator
+cannot catch that mistake, because it has no metadata cache to be stale.
 
 ## What is still open
 

@@ -544,6 +544,50 @@ int CliApp::Run(const CliOptions& opts, std::ostream& out, std::ostream& err) {
             << "Moves completed: " << opRes.Value().stepsCompleted
             << " | Verified: " << opRes.Value().stepsVerified
             << " | Skipped: " << opRes.Value().stepsSkipped << "\n";
+
+        // Which read path produced the numbers above. A layout that lags behind a
+        // completed move is invisible in the aggregate census - it just looks like
+        // a very unproductive operation - so the path is named rather than implied.
+        for (const auto& step : volPtr->Evidence().probeLog) {
+            if (step.rfind("MftScan via", 0) == 0) {
+                out << "Scan: " << step << "\n";
+                break;
+            }
+        }
+
+        // Ground truth for a single-target operation: the file's own layout, read
+        // straight from the filesystem after the moves. No snapshot, no census, no
+        // aggregation. If this reports one extent while the line above still says
+        // the volume is as fragmented as before, the analysis is what is wrong, not
+        // the mover.
+        if (opts.verb == "file" && !opts.targetPath.empty()) {
+            FileId targetId = 0;
+            std::size_t extentsBefore = 0;
+            std::string targetName;
+            for (const auto& f : beforeSnap.files) {
+                if (!f.flags.isDirectory && !f.flags.resident && !f.extents.empty() &&
+                    ExclusionEngine::IsWithinScope(opts.targetPath, f.path)) {
+                    targetId = f.id;
+                    extentsBefore = f.extents.size();
+                    targetName = f.name;
+                    break;
+                }
+            }
+            if (targetId != 0) {
+                auto live = fsPtr->Extents(targetId);
+                out << "Target: " << (targetName.empty() ? opts.targetPath : targetName) << ": "
+                    << extentsBefore << " extent(s) before";
+                if (live) {
+                    out << " -> " << live.Value().size() << " extent(s) now (live read)\n";
+                    for (const auto& e : live.Value()) {
+                        out << "  vcn " << e.startVcn << " + " << e.clusterCount
+                            << " @ lcn " << e.startLcn << "\n";
+                    }
+                } else {
+                    out << " -> live readback failed\n";
+                }
+            }
+        }
         // A simulation describes its own locks and faults on purpose; the warning
         // exists for a real volume where a blind census means a broken read path.
         // Windows' own analysis hides files larger than 64 MiB from its fragmentation
