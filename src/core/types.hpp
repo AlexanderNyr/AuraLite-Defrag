@@ -46,6 +46,38 @@ struct Extent {
     ClusterCount clusterCount{0};
 };
 
+// Runs that follow each other in both VCN and LCN are one extent with a longer
+// run, whatever the filesystem chose to split them into on disk.
+//
+// This is not cosmetics. FSCTL_MOVE_FILE moves one chunk at a time, and NTFS
+// leaves the resulting run list as a chain of adjacent entries: a file moved to
+// a single free run comes back as VCN 0 + 7568 @ 38431076 followed by
+// VCN 7568 + 2147 @ 38438644 - 38431076 + 7568 == 38438644, one unbroken stretch
+// of disk. Counting entries instead of discontinuities made that file look
+// fragmented forever: every run re-planned the same two moves, moved it to
+// another contiguous run, and the census never changed.
+//
+// Sparse runs (VCNs with no LCN) are never merged across, because the LCN
+// adjacency test fails there by construction.
+inline void MergeAdjacentExtents(std::vector<Extent>& extents) {
+    if (extents.size() < 2) return;
+    std::vector<Extent> merged;
+    merged.reserve(extents.size());
+    for (const auto& e : extents) {
+        if (e.clusterCount == 0) continue;
+        if (!merged.empty()) {
+            Extent& prev = merged.back();
+            if (prev.startVcn + prev.clusterCount == e.startVcn &&
+                prev.startLcn + prev.clusterCount == e.startLcn) {
+                prev.clusterCount += e.clusterCount;
+                continue;
+            }
+        }
+        merged.push_back(e);
+    }
+    extents.swap(merged);
+}
+
 struct FileFlags {
     bool compressed{false};
     bool sparse{false};

@@ -1325,6 +1325,82 @@ void TestMftRunListDecoding() {
     }
     // A zero cluster size would divide by zero downstream.
     CHECK(!mft::DecodeRunList(std::string("\0", 1), 0).Ok());
+
+    // Two runs that follow each other in VCN *and* LCN are one unbroken stretch
+    // of disk. NTFS writes exactly that after FSCTL_MOVE_FILE moves a file into a
+    // single free run, and counting the entries made the file look fragmented
+    // forever: the same two moves were planned on every run, the file was moved
+    // to another contiguous run each time, and the census never changed.
+    {
+        std::string rl;
+        rl.push_back(static_cast<char>(0x11)); // vcn 0, 7 clusters at LCN 100
+        rl.push_back(7);
+        rl.push_back(100);
+        rl.push_back(static_cast<char>(0x11)); // vcn 7, 3 clusters at LCN 107
+        rl.push_back(3);
+        rl.push_back(7);
+        rl.push_back(0);
+        auto runs = mft::DecodeRunList(rl, bpc);
+        CHECK(runs.Ok());
+        CHECK(runs.Value().size() == 1);
+        CHECK(runs.Value()[0].startLcn == 100 && runs.Value()[0].clusterCount == 10);
+    }
+    // ... but a genuine gap must survive: same shape, LCN 108 instead of 107.
+    {
+        std::string rl;
+        rl.push_back(static_cast<char>(0x11));
+        rl.push_back(7);
+        rl.push_back(100);
+        rl.push_back(static_cast<char>(0x11));
+        rl.push_back(3);
+        rl.push_back(8);
+        rl.push_back(0);
+        auto runs = mft::DecodeRunList(rl, bpc);
+        CHECK(runs.Ok());
+        CHECK(runs.Value().size() == 2);
+    }
+}
+
+void TestAdjacentRunsAreOneExtent() {
+    // The exact layout the reference volume produced: VCN 0 + 7568 @ 38431076,
+    // then VCN 7568 + 2147 @ 38438644. 38431076 + 7568 == 38438644, so the file
+    // occupies one continuous range and is not fragmented.
+    {
+        std::vector<Extent> e{{0, 38431076, 7568}, {7568, 38438644, 2147}};
+        MergeAdjacentExtents(e);
+        CHECK(e.size() == 1);
+        CHECK(e[0].startLcn == 38431076 && e[0].clusterCount == 9715);
+    }
+    // A hole in the VCN range is not adjacency even when LCNs happen to line up.
+    {
+        std::vector<Extent> e{{0, 100, 4}, {6, 104, 4}};
+        MergeAdjacentExtents(e);
+        CHECK(e.size() == 2);
+    }
+    // A gap in LCN is a real fragment and must not be merged away.
+    {
+        std::vector<Extent> e{{0, 100, 4}, {4, 200, 4}};
+        MergeAdjacentExtents(e);
+        CHECK(e.size() == 2);
+    }
+    // Zero-length entries would make the cluster totals wrong.
+    {
+        std::vector<Extent> e{{0, 100, 0}, {0, 100, 4}};
+        MergeAdjacentExtents(e);
+        CHECK(e.size() == 1 && e[0].clusterCount == 4);
+    }
+    // Already normal, single, and empty inputs are untouched.
+    {
+        std::vector<Extent> e{{0, 100, 4}, {4, 104, 4}, {8, 108, 4}};
+        MergeAdjacentExtents(e);
+        CHECK(e.size() == 1 && e[0].clusterCount == 12);
+        std::vector<Extent> one{{0, 100, 4}};
+        MergeAdjacentExtents(one);
+        CHECK(one.size() == 1);
+        std::vector<Extent> none;
+        MergeAdjacentExtents(none);
+        CHECK(none.empty());
+    }
 }
 
 void TestMftSequentialScan() {
@@ -1741,6 +1817,7 @@ int main() {
     RUN_TEST(TestMaxFilesOption);
     RUN_TEST(TestMftRecordParsing);
     RUN_TEST(TestMftRunListDecoding);
+    RUN_TEST(TestAdjacentRunsAreOneExtent);
     RUN_TEST(TestMftSequentialScan);
     RUN_TEST(TestMftBootstrapFromRecordZero);
     RUN_TEST(TestCliAndSchedulerSsdPolicy);

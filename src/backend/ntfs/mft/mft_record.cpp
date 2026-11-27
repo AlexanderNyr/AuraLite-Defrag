@@ -165,6 +165,8 @@ Result<std::vector<Extent>> DecodeRunList(std::string_view runList,
         }
         vcn += count;
     }
+    // Adjacent runs are one extent, not two: see MergeAdjacentExtents.
+    MergeAdjacentExtents(out);
     return Result<std::vector<Extent>>::Success(std::move(out));
 }
 

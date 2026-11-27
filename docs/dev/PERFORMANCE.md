@@ -272,6 +272,39 @@ That line is ground truth. If it says one extent while the census above still
 counts two, the analysis is what is broken, not the mover - and the emulator
 cannot catch that mistake, because it has no metadata cache to be stale.
 
+### 9. Adjacent runs are one extent, not two
+
+The live readback settled it:
+
+```
+Moves completed: 2 | Verified: 2 | Skipped: 0
+Target: dsymutil: 2 extent(s) before -> 2 extent(s) now (live read)
+  vcn 0 + 7568 @ lcn 38431076
+  vcn 7568 + 2147 @ lcn 38438644
+```
+
+38431076 + 7568 is 38438644. The file occupies **one unbroken stretch of disk**
+and the mover had put it exactly there. The two "extents" are two adjacent
+entries in the run list, which is what `FSCTL_MOVE_FILE` leaves behind when it
+moves a file chunk by chunk into a single free run.
+
+Everything downstream counted entries instead of discontinuities, so the file
+looked fragmented forever: each run re-planned the same two moves, moved it to
+another contiguous run, reported "2 moves, verified", and the census did not
+budge. The journal rotated with "different plan" every time, which is the
+signature - the targets were new, the layout was already fine.
+
+`MergeAdjacentExtents` (src/core/types.hpp) now normalises both readers:
+the MFT run-list decoder and `FSCTL_GET_RETRIEVAL_POINTERS`. The rule is strict -
+`prev.startVcn + prev.clusterCount == next.startVcn` **and**
+`prev.startLcn + prev.clusterCount == next.startLcn` - so a sparse hole (no LCN)
+or a real gap in LCN is never merged away.
+
+This also settles two older discrepancies: the census read higher than
+`defrag.exe` ("1 фрагмент" on this volume), and the `2plus=` column counted run
+entries rather than fragments. A file with two adjacent runs is not fragmented,
+and no amount of moving it will ever make it more contiguous than it already was.
+
 ## What is still open
 
 | Item | Blocked by |

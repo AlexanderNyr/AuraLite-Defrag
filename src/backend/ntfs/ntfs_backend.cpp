@@ -478,6 +478,10 @@ Result<std::vector<Extent>> RealNtfsBackend::ReadRetrievalPointers(HANDLE fileHa
         if (ok) break;
         in.StartingVcn.QuadPart = static_cast<LONGLONG>(prevVcn);
     }
+    // Both readers must agree on what "fragmented" means, and a chain of adjacent
+    // runs is one extent. Without this the live readback in the CLI reports two
+    // extents for a file that occupies one unbroken stretch of disk.
+    MergeAdjacentExtents(out);
     return Result<std::vector<Extent>>::Success(std::move(out));
 }
 
