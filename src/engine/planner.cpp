@@ -239,9 +239,18 @@ Result<DefragPlan> DefragPlanner::Plan(const AnalysisSnapshot& snapshot,
             continue;
         }
 
+        // A skip entry explains why a file the operator asked about was not
+        // touched. In single-file/folder mode the other 160,000 files were never
+        // part of the question: reporting "$MFT: MetadataFile" for them buried the
+        // one line that mattered under 156 lines that did not.
+        const bool inModeScope =
+            options.mode != DefragMode::SingleFileOrFolder || targetSet.count(f->id) > 0 ||
+            (!options.targetFolderPrefix.empty() &&
+             ExclusionEngine::IsWithinScope(options.targetFolderPrefix, f->path));
+
         const SkipReason skip = policy.ClassifySkipReason(*f, snapshot.capabilities, allowMftTier1);
         if (skip != SkipReason::None) {
-            plan.skipped.push_back({f->id, f->name, skip});
+            if (inModeScope) plan.skipped.push_back({f->id, f->name, skip});
             continue;
         }
 

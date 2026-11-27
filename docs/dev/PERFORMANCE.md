@@ -218,6 +218,40 @@ mind:
 LCN 4 and the rest of the table at LCN 9, and checks that the scan returns all
 four records in order across the gap.
 
+### 8. Raw sector reads bypass the NTFS cache
+
+The first real move on the reference volume reported success and changed
+nothing:
+
+```
+[100.00%] 2/2 moves, 9,715 clusters
+Moves completed: 2 | Verified: 2 | Skipped: 0
+Files: 160,148 | Fragmented: 14 -> 14
+```
+
+Both moves were issued, both were verified against the retrieval pointers, and
+the analysis before and after is byte-identical — so the next run planned the
+same two moves again, forever.
+
+The cause is the fast path itself, not the mover. Reading `$MFT` as raw sectors
+goes straight to the disk and skips the NTFS metadata cache, so a record the
+filesystem updated seconds ago still reads back with its old run list. A move
+touches exactly such a record. Reading through a handle on `$MFT` instead
+(`FileIdType` with the full reference — record 0, sequence 1 — which resolves
+even though a bare index 0 does not) goes through the cache and is always
+current. The run list is still decoded from the raw sectors when no handle can
+be opened, and the probe trace then says so:
+
+```
+MftScan via $MFT handle (cache-coherent)
+MftScan via raw volume reads (may lag behind the cache)
+```
+
+Two guards came out of it: `MoveExtent` refuses a move whose target equals the
+extent's current LCN (it would "succeed" and change nothing), and the plan's skip
+report is scoped to the mode, so a single-file operation no longer lists `$MFT`
+and 155 other files that were never part of the question.
+
 ## What is still open
 
 | Item | Blocked by |

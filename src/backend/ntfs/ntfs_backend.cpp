@@ -19,6 +19,11 @@
 #include "backend/usn/usn_parser.hpp"
 
 namespace auralite {
+namespace {
+// $MFT is record 0 with sequence number 1. The index alone is not a valid
+// FileIdType descriptor; the pair is.
+constexpr std::uint64_t kMftCanonicalReference = 1ULL << 48;
+} // namespace
 
 RealNtfsBackend::RealNtfsBackend(VolumeId volumeId)
     : volumeId_(std::move(volumeId)) {
@@ -163,13 +168,17 @@ UniqueHandle RealNtfsBackend::OpenFileByReference(FileId fileId, DWORD desiredAc
     // pair. Trying the full reference first and falling back to the bare index
     // covers both, and every attempt is recorded - 144,838 files reported as
     // "locked" with no error code is how the extent census stayed at zero.
-    std::uint64_t candidates[2]{};
+    std::uint64_t candidates[3]{};
     std::size_t count = 0;
     const auto it = refCache_.find(fileId);
     if (it != refCache_.end() && it->second != 0) candidates[count++] = it->second;
     if (count == 0 || candidates[0] != static_cast<std::uint64_t>(fileId)) {
         candidates[count++] = static_cast<std::uint64_t>(fileId);
     }
+    // Record 0 as a bare index is rejected with ERROR_INVALID_PARAMETER, but the
+    // full reference (record 0, sequence 1) resolves. Without this, $MFT could
+    // only be read as raw sectors - see EnumerateViaMft.
+    if (fileId == kMftFileId) candidates[count++] = kMftCanonicalReference;
 
     DWORD lastErr = 0;
     for (std::size_t i = 0; i < count; ++i) {
@@ -662,6 +671,19 @@ Result<std::vector<FileEntry>> RealNtfsBackend::EnumerateViaMft(std::uint64_t ma
             MakeError(ErrorCode::E_ENUM_IO, volumeId_, 0, ::GetLastError()));
     }
 
+    // Preferred: read the table through a handle on $MFT itself.
+    //
+    // Raw sector reads go straight to the disk and therefore bypass the NTFS
+    // metadata cache, so a record the filesystem updated seconds ago - every
+    // record a just-completed move touched - can still read back with its old
+    // run list. The first real move exposed exactly that: two moves reported as
+    // completed and verified, and an analysis that still showed the old layout,
+    // so the next run planned the same two moves again.
+    //
+    // A handle could not be opened before (FileIdType 0 is rejected); the full
+    // reference works, and reads through it are cache-coherent.
+    UniqueHandle hMft = OpenFileByReference(kMftFileId, FILE_READ_DATA | FILE_READ_ATTRIBUTES);
+
     // Bootstrap: $MFT cannot be opened as "file 0".
     //
     // OpenFileById with a FileIdType descriptor of 0 is rejected with
@@ -705,8 +727,11 @@ Result<std::vector<FileEntry>> RealNtfsBackend::EnumerateViaMft(std::uint64_t ma
     const std::function<void(std::uint64_t)> progress = scanProgressCb_;
     const std::vector<Extent> mftRuns = runs;
     const HANDLE volHandle = hVol.Get();
+    const HANDLE mftHandle = hMft.Valid() ? hMft.Get() : nullptr;
 
-    auto reader = [this, volHandle, mftRuns, bytesPerCluster](std::uint64_t offset, std::size_t length) {
+    auto reader = [this, volHandle, mftHandle, mftRuns, bytesPerCluster](std::uint64_t offset,
+                                                                        std::size_t length) {
+        if (mftHandle != nullptr) return ReadVolumeAt(mftHandle, offset, length);
         return ReadMftRange(volHandle, mftRuns, bytesPerCluster, offset, length);
     };
 
@@ -784,6 +809,9 @@ Result<std::vector<FileEntry>> RealNtfsBackend::EnumerateViaMft(std::uint64_t ma
     }
 
     if (scanProgressCb_) scanProgressCb_(entries.size());
+    mediaDetector_.NoteProbe(hMft.Valid()
+                                 ? "MftScan via $MFT handle (cache-coherent)"
+                                 : "MftScan via raw volume reads (may lag behind the cache)");
     mediaDetector_.NoteProbe("MftScan records=" + std::to_string(scan.stats.recordsSeen) +
                              " used=" + std::to_string(scan.stats.recordsUsed) +
                              " extension=" + std::to_string(scan.stats.extensionRecords) +
@@ -960,6 +988,14 @@ MoveResult RealNtfsBackend::MoveExtent(FileId fileId, Vcn startVcn, Lcn targetLc
                 break;
             }
         }
+    }
+
+    if (sourceLcnForProbe != kInvalidLcn && sourceLcnForProbe == targetLcn) {
+        // The extent is already where the plan wants it. Issuing the ioctl would
+        // "succeed" while changing nothing, and the caller would count it as a
+        // completed move - which is how a stale plan can look productive forever.
+        return {false, 0, 0, static_cast<std::uint32_t>(ErrorCode::E_MOVE_INVALID_PARAM), false,
+                SkipReason::None};
     }
 
     MOVE_FILE_DATA mfd{};

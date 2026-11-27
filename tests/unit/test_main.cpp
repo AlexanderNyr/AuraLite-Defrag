@@ -708,6 +708,13 @@ void TestPathScopeAndTargetConfinement() {
 
     auto planRes = planner.Plan(snap, opts, policy);
     CHECK(planRes.Ok());
+    // Metadata is rejected by the policy gate before selection, but in a
+    // single-target operation it is not part of the question: reporting "$MFT:
+    // MetadataFile" buried the target's own reason under 156 irrelevant lines.
+    for (const auto& sk : planRes.Value().skipped) {
+        CHECK(!sk.fileName.empty());
+        CHECK(sk.reason != SkipReason::MetadataFile);
+    }
     bool sawA = false;
     bool sawB = false;
     for (const auto& m : planRes.Value().moves) {
